@@ -52,16 +52,59 @@ def retrieve_relevant_chunks(
 ) -> list[dict]:
     query_embedding = create_embedding(question)
 
-    response = supabase.rpc(
-        "match_document_chunks",
-        {
-            "query_embedding": query_embedding,
-            "match_count": match_count,
-            "filter_topic_id": topic_id,
-        },
-    ).execute()
+    topic_matches: list[dict] = []
 
-    return response.data or []
+    if topic_id:
+        topic_response = supabase.rpc(
+            "match_document_chunks",
+            {
+                "query_embedding": query_embedding,
+                "match_count": match_count,
+                "filter_topic_id": topic_id,
+            },
+        ).execute()
+
+        topic_matches = topic_response.data or []
+
+    best_topic_similarity = (
+        topic_matches[0].get("similarity", 0)
+        if topic_matches
+        else 0
+    )
+
+    if not topic_id or best_topic_similarity < 0.35:
+        global_response = supabase.rpc(
+            "match_document_chunks",
+            {
+                "query_embedding": query_embedding,
+                "match_count": match_count,
+                "filter_topic_id": None,
+            },
+        ).execute()
+
+        global_matches = global_response.data or []
+        combined_matches = topic_matches + global_matches
+
+        seen_ids: set[str] = set()
+        deduplicated_matches: list[dict] = []
+
+        for match in combined_matches:
+            match_id = match["id"]
+
+            if match_id in seen_ids:
+                continue
+
+            seen_ids.add(match_id)
+            deduplicated_matches.append(match)
+
+        deduplicated_matches.sort(
+            key=lambda item: item.get("similarity", 0),
+            reverse=True,
+        )
+
+        return deduplicated_matches[:match_count]
+
+    return topic_matches
 
 
 def build_sources(
