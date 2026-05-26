@@ -10,6 +10,13 @@ client = OpenAI(
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
 )
 
+def create_embedding(text: str) -> list[float]:
+    response = client.embeddings.create(
+        model=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
+        input=text,
+    )
+
+    return response.data[0].embedding
 
 def generate_test_response(user_message: str) -> str:
     response = client.responses.create(

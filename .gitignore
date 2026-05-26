@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Source Materials
+backend/source_documents/
+
+# macOS system files
+.DS_Store
+**/.DS_Store
+EOF

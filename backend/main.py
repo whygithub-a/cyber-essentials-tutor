@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.ai import router as ai_router
 from app.api.topics import router as topics_router
+from app.api.retrieval import router as retrieval_router
 
 load_dotenv()
 
@@ -23,6 +24,7 @@ app.add_middleware(
 
 app.include_router(ai_router)
 app.include_router(topics_router)
+app.include_router(retrieval_router)
 
 
 @app.get("/")
