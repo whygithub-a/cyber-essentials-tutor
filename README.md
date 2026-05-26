@@ -1,4 +1,3 @@
-# cyber-essentials-tutor
 # Cyber Essentials Intelligent Tutoring System
 
 ## Project Overview
