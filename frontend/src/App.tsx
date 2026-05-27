@@ -4,12 +4,12 @@ import {
   Badge,
   Button,
   Card,
-  Col,
-  Container,
   Form,
   ListGroup,
-  Row,
+  ProgressBar,
   Spinner,
+  Tab,
+  Tabs,
 } from "react-bootstrap";
 
 const API_BASE_URL = "http://localhost:8000";
@@ -20,6 +20,7 @@ const PDF_PATH =
 type LearningSection = {
   id: string;
   title: string;
+  shortTitle: string;
   description: string;
   page: number;
   topicId: string | null;
@@ -29,6 +30,7 @@ const LEARNING_SECTIONS: LearningSection[] = [
   {
     id: "definitions",
     title: "Definitions",
+    shortTitle: "Definitions",
     description: "Key terminology used in the Cyber Essentials requirements.",
     page: 5,
     topicId: null,
@@ -36,6 +38,7 @@ const LEARNING_SECTIONS: LearningSection[] = [
   {
     id: "scope",
     title: "Scope",
+    shortTitle: "Scope",
     description: "Cyber Essentials scope, asset inclusion and boundaries.",
     page: 7,
     topicId: null,
@@ -43,6 +46,7 @@ const LEARNING_SECTIONS: LearningSection[] = [
   {
     id: "firewalls",
     title: "Firewalls",
+    shortTitle: "Firewalls",
     description: "Firewall requirements and network access controls.",
     page: 14,
     topicId: "firewalls",
@@ -50,6 +54,7 @@ const LEARNING_SECTIONS: LearningSection[] = [
   {
     id: "secure_configuration",
     title: "Secure Configuration",
+    shortTitle: "Configuration",
     description: "Secure setup and configuration of devices and software.",
     page: 15,
     topicId: "secure_configuration",
@@ -57,6 +62,7 @@ const LEARNING_SECTIONS: LearningSection[] = [
   {
     id: "security_update_management",
     title: "Security Update Management",
+    shortTitle: "Updates",
     description: "Supported software, updates, vulnerabilities and patches.",
     page: 17,
     topicId: "security_update_management",
@@ -64,6 +70,7 @@ const LEARNING_SECTIONS: LearningSection[] = [
   {
     id: "user_access_control",
     title: "User Access Control",
+    shortTitle: "Access Control",
     description: "User accounts, privileges and authentication.",
     page: 19,
     topicId: "user_access_control",
@@ -71,6 +78,7 @@ const LEARNING_SECTIONS: LearningSection[] = [
   {
     id: "malware_protection",
     title: "Malware Protection",
+    shortTitle: "Malware",
     description: "Protection against malware and malicious software.",
     page: 24,
     topicId: "malware_protection",
@@ -145,42 +153,18 @@ function getOrCreateSessionId(): string {
 }
 
 function formatBadgeLabel(badge: string | null): string {
-  if (badge === "strong_understanding") {
-    return "Strong understanding";
-  }
-
-  if (badge === "developing_understanding") {
-    return "Developing understanding";
-  }
-
-  if (badge === "needs_review") {
-    return "Needs review";
-  }
-
-  if (badge === "completed") {
-    return "Completed";
-  }
-
-  return "Not completed";
+  if (badge === "strong_understanding") return "Strong";
+  if (badge === "developing_understanding") return "Developing";
+  if (badge === "needs_review") return "Review";
+  if (badge === "completed") return "Completed";
+  return "Not done";
 }
 
 function getBadgeVariant(badge: string | null): string {
-  if (badge === "strong_understanding") {
-    return "success";
-  }
-
-  if (badge === "developing_understanding") {
-    return "primary";
-  }
-
-  if (badge === "needs_review") {
-    return "warning";
-  }
-
-  if (badge === "completed") {
-    return "info";
-  }
-
+  if (badge === "strong_understanding") return "success";
+  if (badge === "developing_understanding") return "primary";
+  if (badge === "needs_review") return "warning";
+  if (badge === "completed") return "info";
   return "secondary";
 }
 
@@ -209,12 +193,18 @@ function App() {
   const [loadingProgress, setLoadingProgress] = useState(false);
   const [progressError, setProgressError] = useState("");
 
-  const pdfUrl = `${PDF_PATH}#page=${selectedSection.page}`;
+  const pdfUrl = `${PDF_PATH}#page=${selectedSection.page}&zoom=60`;
+  const assessableSections = LEARNING_SECTIONS.filter(
+    (section) => section.topicId
+  );
+  const completedCount = progressItems.filter((item) => item.completed).length;
+  const progressPercentage =
+    assessableSections.length > 0
+      ? Math.round((completedCount / assessableSections.length) * 100)
+      : 0;
 
   const loadProgress = async (activeSessionId: string) => {
-    if (!activeSessionId) {
-      return;
-    }
+    if (!activeSessionId) return;
 
     setLoadingProgress(true);
     setProgressError("");
@@ -287,9 +277,7 @@ function App() {
     setAssessmentResult(null);
     setAssessmentError("");
 
-    if (!section.topicId) {
-      return;
-    }
+    if (!section.topicId) return;
 
     setLoadingAssessmentQuestion(true);
 
@@ -324,18 +312,13 @@ function App() {
   };
 
   const askTutor = async () => {
-    if (!question.trim()) {
-      return;
-    }
+    if (!question.trim()) return;
 
     const userQuestion = question.trim();
 
     setMessages((previousMessages) => [
       ...previousMessages,
-      {
-        role: "user",
-        content: userQuestion,
-      },
+      { role: "user", content: userQuestion },
     ]);
 
     setQuestion("");
@@ -377,9 +360,7 @@ function App() {
   };
 
   const submitAssessment = async () => {
-    if (!assessmentQuestion) {
-      return;
-    }
+    if (!assessmentQuestion) return;
 
     if (!assessmentAnswer.trim()) {
       setAssessmentError("Please write an answer before submitting.");
@@ -433,112 +414,178 @@ function App() {
   }, []);
 
   return (
-    <Container fluid className="py-4 px-4">
-      <Row>
-        <Col md={3}>
-          <Card>
-            <Card.Body>
-              <Card.Title>Learning Sections</Card.Title>
-              <Card.Text>
-                Select a section to read the official Cyber Essentials PDF.
-              </Card.Text>
+    <div
+      style={{
+        height: "100vh",
+        width: "100vw",
+        overflow: "hidden",
+        background: "#eef1f5",
+        display: "grid",
+        gridTemplateRows: "58px 1fr",
+      }}
+    >
+      <header
+        style={{
+          background: "white",
+          borderBottom: "1px solid #d8dee8",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 18px",
+        }}
+      >
+        <div>
+          <h5 style={{ margin: 0 }}>
+            Cyber Essentials Intelligent Tutoring System
+          </h5>
+          <small className="text-muted">
+            PDF learning, grounded AI tutoring, formative assessment and progress tracking
+          </small>
+        </div>
 
-              <ListGroup>
+        <Badge bg="warning" text="dark" style={{ fontSize: "0.8rem" }}>
+          Learning prototype only — not an official certification decision tool
+        </Badge>
+      </header>
+
+      <main
+        style={{
+          minHeight: 0,
+          display: "grid",
+          gridTemplateColumns: "230px minmax(560px, 1fr) 390px",
+          gap: "12px",
+          padding: "12px",
+        }}
+      >
+        <aside style={{ minHeight: 0 }}>
+          <Card className="h-100 border-0 shadow-sm">
+            <Card.Body
+              style={{
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                padding: "14px",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ marginBottom: "10px", textAlign: "center" }}>
+                <h6 className="mb-1">Learning Sections</h6>
+                <small className="text-muted">
+                  Select a section to open the PDF.
+                </small>
+              </div>
+
+              <ListGroup variant="flush" style={{ marginBottom: "12px" }}>
                 {LEARNING_SECTIONS.map((section) => (
                   <ListGroup.Item
                     key={section.id}
                     action
                     active={selectedSection.id === section.id}
                     onClick={() => selectSection(section)}
+                    style={{
+                      padding: "10px 8px",
+                      borderRadius: "8px",
+                      marginBottom: "4px",
+                      textAlign: "center",
+                      fontWeight: 600,
+                    }}
                   >
-                    <strong>{section.title}</strong>
-                    <br />
-                    <small>{section.description}</small>
+                    {section.shortTitle}
                   </ListGroup.Item>
                 ))}
               </ListGroup>
-            </Card.Body>
-          </Card>
 
-          <Card className="mt-3">
-            <Card.Body>
-              <Card.Title>Progress Dashboard</Card.Title>
-              <Card.Text>
-                Progress is tracked anonymously in this browser session.
-              </Card.Text>
+              <div style={{ borderTop: "1px solid #e1e5ea", paddingTop: "12px" }}>
+                <div className="d-flex justify-content-between align-items-center">
+                  <h6 className="mb-0">Progress</h6>
+                  <Badge bg="primary">{progressPercentage}%</Badge>
+                </div>
+                <small className="text-muted">
+                  {completedCount}/{assessableSections.length} assessments completed
+                </small>
 
-              {loadingProgress && (
-                <Alert variant="info">
-                  <Spinner animation="border" size="sm" className="me-2" />
-                  Loading progress...
-                </Alert>
-              )}
+                <ProgressBar now={progressPercentage} className="my-2" />
 
-              {progressError && (
-                <Alert variant="warning">{progressError}</Alert>
-              )}
+                {progressError && (
+                  <Alert variant="warning" className="py-1 px-2 small">
+                    {progressError}
+                  </Alert>
+                )}
 
-              <ListGroup>
-                {LEARNING_SECTIONS.filter((section) => section.topicId).map(
-                  (section) => {
-                    const progress = getProgressForTopic(section.topicId!);
+                {loadingProgress ? (
+                  <small className="text-muted">
+                    <Spinner animation="border" size="sm" className="me-1" />
+                    Loading...
+                  </small>
+                ) : (
+                  <div style={{ display: "grid", gap: "6px", marginTop: "8px" }}>
+                    {assessableSections.map((section) => {
+                      const progress = getProgressForTopic(section.topicId!);
 
-                    return (
-                      <ListGroup.Item key={`progress-${section.id}`}>
-                        <div className="d-flex justify-content-between align-items-start">
-                          <div>
-                            <strong>{section.title}</strong>
-                            <br />
-                            {progress ? (
-                              <small>
-                                Score: {progress.latest_score}/
-                                {progress.max_score}
-                              </small>
-                            ) : (
-                              <small>Assessment not completed</small>
-                            )}
-                          </div>
-
+                      return (
+                        <div
+                          key={`progress-${section.id}`}
+                          className="d-flex justify-content-between align-items-center"
+                        >
+                          <small>{section.shortTitle}</small>
                           <Badge
-                            bg={getBadgeVariant(
-                              progress?.badge_awarded ?? null
-                            )}
+                            bg={getBadgeVariant(progress?.badge_awarded ?? null)}
                           >
-                            {formatBadgeLabel(progress?.badge_awarded ?? null)}
+                            {progress
+                              ? `${progress.latest_score}/${progress.max_score}`
+                              : formatBadgeLabel(null)}
                           </Badge>
                         </div>
-                      </ListGroup.Item>
-                    );
-                  }
+                      );
+                    })}
+                  </div>
                 )}
-              </ListGroup>
+              </div>
 
               {sessionId && (
-                <p className="mt-3 mb-0">
-                  <small>Anonymous session: {sessionId.slice(0, 18)}...</small>
-                </p>
+                <div
+                  style={{
+                    marginTop: "auto",
+                    paddingTop: "12px",
+                    borderTop: "1px solid #e1e5ea",
+                  }}
+                >
+                  <small className="text-muted">
+                    Session: {sessionId.slice(0, 16)}...
+                  </small>
+                </div>
               )}
             </Card.Body>
           </Card>
-        </Col>
+        </aside>
 
-        <Col md={5}>
-          <Card>
-            <Card.Body>
-              <div className="d-flex justify-content-between align-items-start mb-2">
+        <section style={{ minHeight: 0 }}>
+          <Card className="h-100 border-0 shadow-sm">
+            <Card.Body
+              style={{
+                height: "100%",
+                display: "grid",
+                gridTemplateRows: "58px 1fr",
+                padding: "14px",
+                minHeight: 0,
+              }}
+            >
+              <div className="d-flex justify-content-between align-items-start">
                 <div>
-                  <Card.Title>{selectedSection.title}</Card.Title>
-                  <Card.Text>{selectedSection.description}</Card.Text>
+                  <h5 className="mb-1">{selectedSection.title}</h5>
+                  <small className="text-muted">
+                    {selectedSection.description}
+                  </small>
                 </div>
-                <Badge bg="secondary">Reader page {selectedSection.page}</Badge>
               </div>
 
               <div
                 style={{
-                  border: "1px solid #dee2e6",
-                  borderRadius: "8px",
+                  minHeight: 0,
+                  border: "1px solid #d8dee8",
+                  borderRadius: "12px",
                   overflow: "hidden",
-                  height: "760px",
+                  background: "white",
                 }}
               >
                 <iframe
@@ -552,271 +599,344 @@ function App() {
               </div>
             </Card.Body>
           </Card>
-        </Col>
+        </section>
 
-        <Col md={4}>
-          <Card className="mb-3">
-            <Card.Body>
-              <Card.Title>AI Tutor</Card.Title>
-              <Card.Text>
-                Ask a question about Cyber Essentials. The tutor retrieves
-                relevant Cyber Essentials content before generating an answer.
-              </Card.Text>
-
-              {chatError && <Alert variant="danger">{chatError}</Alert>}
-
-              <div
-                style={{
-                  minHeight: "360px",
-                  maxHeight: "480px",
-                  overflowY: "auto",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "8px",
-                  padding: "12px",
-                  marginBottom: "16px",
-                  background: "#f8f9fa",
-                }}
-              >
-                {messages.length === 0 && (
-                  <Alert variant="secondary">
-                    Try asking:{" "}
-                    <strong>
-                      What should an organisation do when an employee leaves?
-                    </strong>
-                  </Alert>
-                )}
-
-                {messages.map((message, index) => (
-                  <Card
-                    key={`${message.role}-${index}`}
-                    className="mb-3"
-                    border={message.role === "user" ? "primary" : "success"}
+        <aside style={{ minHeight: 0 }}>
+          <Card className="h-100 border-0 shadow-sm">
+            <Card.Body
+              style={{
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+                padding: "14px",
+                minHeight: 0,
+              }}
+            >
+              <Tabs defaultActiveKey="tutor" className="mb-3" fill>
+                <Tab eventKey="tutor" title="AI Tutor">
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateRows: "auto minmax(220px, 1fr) auto",
+                      height: "calc(100vh - 190px)",
+                      minHeight: 0,
+                    }}
                   >
-                    <Card.Body>
-                      <Badge
-                        bg={message.role === "user" ? "primary" : "success"}
-                        className="mb-2"
-                      >
-                        {message.role === "user" ? "You" : "AI Tutor"}
-                      </Badge>
-
-                      <Card.Text style={{ whiteSpace: "pre-wrap" }}>
-                        {message.content}
-                      </Card.Text>
-
-                      {message.sources && message.sources.length > 0 && (
-                        <div>
-                          <hr />
-                          <strong>Sources used:</strong>
-                          <ListGroup className="mt-2">
-                            {message.sources.map((source) => (
-                              <ListGroup.Item key={source.id}>
-                                <div>
-                                  <strong>
-                                    {source.section_title ?? "Unknown section"}
-                                  </strong>
-                                  {source.page_number && (
-                                    <span>
-                                      {" "}
-                                      — source page {source.page_number}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {source.similarity !== null && (
-                                  <small>
-                                    Similarity: {source.similarity.toFixed(3)}
-                                  </small>
-                                )}
-
-                                <p className="mb-0 mt-2">
-                                  <small>{source.content_preview}...</small>
-                                </p>
-                              </ListGroup.Item>
-                            ))}
-                          </ListGroup>
-                        </div>
-                      )}
-                    </Card.Body>
-                  </Card>
-                ))}
-
-                {loadingAnswer && (
-                  <Alert variant="info">
-                    <Spinner animation="border" size="sm" className="me-2" />
-                    Retrieving Cyber Essentials context and generating an
-                    answer...
-                  </Alert>
-                )}
-              </div>
-
-              <Form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  askTutor();
-                }}
-              >
-                <Form.Group className="mb-3">
-                  <Form.Label>Your question</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={3}
-                    value={question}
-                    onChange={(event) => setQuestion(event.target.value)}
-                    placeholder="Ask a question about Cyber Essentials..."
-                  />
-                </Form.Group>
-
-                <Button type="submit" disabled={loadingAnswer || !question.trim()}>
-                  Ask AI Tutor
-                </Button>
-              </Form>
-            </Card.Body>
-          </Card>
-
-          <Card>
-            <Card.Body>
-              <Card.Title>Assessment</Card.Title>
-
-              {!selectedSection.topicId && (
-                <Alert variant="secondary">
-                  Assessment is available for the five Cyber Essentials technical
-                  control themes. Select Firewalls, Secure Configuration,
-                  Security Update Management, User Access Control, or Malware
-                  Protection.
-                </Alert>
-              )}
-
-              {selectedSection.topicId && loadingAssessmentQuestion && (
-                <Alert variant="info">
-                  <Spinner animation="border" size="sm" className="me-2" />
-                  Loading assessment question...
-                </Alert>
-              )}
-
-              {assessmentError && (
-                <Alert variant="danger">{assessmentError}</Alert>
-              )}
-
-              {selectedSection.topicId &&
-                !assessmentQuestion &&
-                !loadingAssessmentQuestion && (
-                  <Button onClick={() => loadAssessmentQuestion(selectedSection)}>
-                    Load assessment question
-                  </Button>
-                )}
-
-              {assessmentQuestion && (
-                <>
-                  <Badge bg="primary" className="mb-2">
-                    {selectedSection.title}
-                  </Badge>
-
-                  {assessmentQuestion.scenario_context && (
-                    <Alert variant="light">
-                      <strong>Scenario:</strong>{" "}
-                      {assessmentQuestion.scenario_context}
-                    </Alert>
-                  )}
-
-                  <p>
-                    <strong>Question:</strong>{" "}
-                    {assessmentQuestion.question_text}
-                  </p>
-
-                  <Form.Group className="mb-3">
-                    <Form.Label>Your answer</Form.Label>
-                    <Form.Control
-                      as="textarea"
-                      rows={5}
-                      value={assessmentAnswer}
-                      onChange={(event) =>
-                        setAssessmentAnswer(event.target.value)
-                      }
-                      placeholder="Write your answer here..."
-                    />
-                  </Form.Group>
-
-                  <Button
-                    onClick={submitAssessment}
-                    disabled={submittingAssessment || !assessmentAnswer.trim()}
-                  >
-                    {submittingAssessment ? "Submitting..." : "Submit answer"}
-                  </Button>
-                </>
-              )}
-
-              {assessmentResult && (
-                <div className="mt-4">
-                  <hr />
-
-                  <h5>
-                    Score: {assessmentResult.score}/
-                    {assessmentResult.max_score}
-                  </h5>
-
-                  <Alert variant="success">
-                    <strong>Strengths</strong>
-                    <ul className="mb-0">
-                      {assessmentResult.strengths.map((item, index) => (
-                        <li key={`strength-${index}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </Alert>
-
-                  <Alert variant="warning">
-                    <strong>Missing points</strong>
-                    <ul className="mb-0">
-                      {assessmentResult.missing_points.map((item, index) => (
-                        <li key={`missing-${index}`}>{item}</li>
-                      ))}
-                    </ul>
-                  </Alert>
-
-                  <Alert variant="info">
-                    <strong>Feedback</strong>
-                    <p className="mb-0 mt-2">{assessmentResult.feedback}</p>
-                  </Alert>
-
-                  {assessmentResult.sources.length > 0 && (
                     <div>
-                      <strong>Sources used:</strong>
-                      <ListGroup className="mt-2">
-                        {assessmentResult.sources.map((source) => (
-                          <ListGroup.Item key={source.id}>
-                            <div>
-                              <strong>
-                                {source.section_title ?? "Unknown section"}
-                              </strong>
-                              {source.page_number && (
-                                <span>
-                                  {" "}
-                                  — source page {source.page_number}
-                                </span>
-                              )}
+                      <small className="text-muted d-block mb-2">
+                        Ask questions grounded in retrieved Cyber Essentials content.
+                      </small>
+
+                      {chatError && <Alert variant="danger">{chatError}</Alert>}
+                    </div>
+
+                    <div
+                      style={{
+                        minHeight: 0,
+                        overflowY: "auto",
+                        border: "1px solid #d8dee8",
+                        borderRadius: "12px",
+                        padding: "12px",
+                        background: "#f8f9fa",
+                        marginBottom: "12px",
+                      }}
+                    >
+                      {messages.length === 0 && (
+                        <Alert variant="secondary" className="mb-0 small">
+                          Try asking:{" "}
+                          <strong>
+                            What should an organisation do when an employee leaves?
+                          </strong>
+                        </Alert>
+                      )}
+
+                      {messages.map((message, index) => (
+                        <Card
+                          key={`${message.role}-${index}`}
+                          className="mb-3 border-0 shadow-sm"
+                        >
+                          <Card.Body className="p-3">
+                            <Badge
+                              bg={message.role === "user" ? "primary" : "success"}
+                              className="mb-2"
+                            >
+                              {message.role === "user" ? "You" : "AI Tutor"}
+                            </Badge>
+
+                            <Card.Text
+                              className="small"
+                              style={{ whiteSpace: "pre-wrap" }}
+                            >
+                              {message.content}
+                            </Card.Text>
+
+                            {message.sources && message.sources.length > 0 && (
+                              <details>
+                                <summary className="small fw-semibold">
+                                  Sources used
+                                </summary>
+
+                                <ListGroup className="mt-2">
+                                  {message.sources.slice(0, 3).map((source) => (
+                                    <ListGroup.Item key={source.id}>
+                                      <div className="small">
+                                        <strong>
+                                          {source.section_title ?? "Unknown section"}
+                                        </strong>
+                                        {source.page_number && (
+                                          <span>
+                                            {" "}
+                                            — source page {source.page_number}
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {source.similarity !== null && (
+                                        <small className="text-muted">
+                                          Similarity:{" "}
+                                          {source.similarity.toFixed(3)}
+                                        </small>
+                                      )}
+
+                                      <p className="mb-0 mt-2">
+                                        <small>
+                                          {source.content_preview.slice(0, 150)}...
+                                        </small>
+                                      </p>
+                                    </ListGroup.Item>
+                                  ))}
+                                </ListGroup>
+                              </details>
+                            )}
+                          </Card.Body>
+                        </Card>
+                      ))}
+
+                      {loadingAnswer && (
+                        <Alert variant="info" className="mb-0 small">
+                          <Spinner animation="border" size="sm" className="me-2" />
+                          Retrieving context and generating an answer...
+                        </Alert>
+                      )}
+                    </div>
+
+                    <Form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        askTutor();
+                      }}
+                    >
+                      <Form.Group className="mb-2">
+                        <Form.Label className="small">Your question</Form.Label>
+                        <Form.Control
+                          as="textarea"
+                          rows={3}
+                          value={question}
+                          onChange={(event) => setQuestion(event.target.value)}
+                          placeholder="Ask a question..."
+                        />
+                      </Form.Group>
+
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={loadingAnswer || !question.trim()}
+                      >
+                        Ask AI Tutor
+                      </Button>
+                    </Form>
+                  </div>
+                </Tab>
+
+                <Tab eventKey="assessment" title="Assessment">
+                  <div
+                    style={{
+                      height: "calc(100vh - 190px)",
+                      overflowY: "auto",
+                      paddingRight: "4px",
+                    }}
+                  >
+                    {!selectedSection.topicId && (
+                      <Alert variant="secondary" className="small">
+                        Assessment is available for the five technical control themes.
+                      </Alert>
+                    )}
+
+                    {selectedSection.topicId && loadingAssessmentQuestion && (
+                      <Alert variant="info" className="small">
+                        <Spinner animation="border" size="sm" className="me-2" />
+                        Loading question...
+                      </Alert>
+                    )}
+
+                    {assessmentError && (
+                      <Alert variant="danger" className="small">
+                        {assessmentError}
+                      </Alert>
+                    )}
+
+                    {selectedSection.topicId &&
+                      !assessmentQuestion &&
+                      !loadingAssessmentQuestion && (
+                        <Button
+                          size="sm"
+                          onClick={() => loadAssessmentQuestion(selectedSection)}
+                        >
+                          Load assessment question
+                        </Button>
+                      )}
+
+                    {assessmentQuestion && (
+                      <>
+                        <div className="d-flex justify-content-between align-items-center mb-3">
+                          <Badge bg="primary">{selectedSection.shortTitle}</Badge>
+                          {assessmentQuestion.difficulty && (
+                            <Badge bg="secondary">
+                              {assessmentQuestion.difficulty}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {assessmentQuestion.scenario_context && (
+                          <Alert variant="light" className="small">
+                            <strong>Scenario:</strong>{" "}
+                            {assessmentQuestion.scenario_context}
+                          </Alert>
+                        )}
+
+                        <p className="small">
+                          <strong>Question:</strong>{" "}
+                          {assessmentQuestion.question_text}
+                        </p>
+
+                        <Form.Group className="mb-3">
+                          <Form.Label className="small">Your answer</Form.Label>
+                          <Form.Control
+                            as="textarea"
+                            rows={6}
+                            value={assessmentAnswer}
+                            onChange={(event) =>
+                              setAssessmentAnswer(event.target.value)
+                            }
+                            placeholder="Write your answer here..."
+                          />
+                        </Form.Group>
+
+                        <Button
+                          size="sm"
+                          onClick={submitAssessment}
+                          disabled={submittingAssessment || !assessmentAnswer.trim()}
+                        >
+                          {submittingAssessment ? "Submitting..." : "Submit answer"}
+                        </Button>
+
+                        {assessmentResult && (
+                          <div className="mt-4">
+                            <hr />
+
+                            <div className="d-flex justify-content-between align-items-center mb-3">
+                              <h6 className="mb-0">
+                                Score: {assessmentResult.score}/
+                                {assessmentResult.max_score}
+                              </h6>
+                              <Badge
+                                bg={
+                                  assessmentResult.score /
+                                    assessmentResult.max_score >=
+                                  0.8
+                                    ? "success"
+                                    : assessmentResult.score /
+                                        assessmentResult.max_score >=
+                                      0.5
+                                    ? "primary"
+                                    : "warning"
+                                }
+                              >
+                                Formative
+                              </Badge>
                             </div>
 
-                            {source.similarity !== null && (
-                              <small>
-                                Similarity: {source.similarity.toFixed(3)}
-                              </small>
-                            )}
+                            <Alert variant="success" className="small">
+                              <strong>Strengths</strong>
+                              <ul className="mb-0 mt-2">
+                                {assessmentResult.strengths.map((item, index) => (
+                                  <li key={`strength-${index}`}>{item}</li>
+                                ))}
+                              </ul>
+                            </Alert>
 
-                            <p className="mb-0 mt-2">
-                              <small>{source.content_preview}...</small>
-                            </p>
-                          </ListGroup.Item>
-                        ))}
-                      </ListGroup>
-                    </div>
-                  )}
-                </div>
-              )}
+                            <Alert variant="warning" className="small">
+                              <strong>Missing points</strong>
+                              <ul className="mb-0 mt-2">
+                                {assessmentResult.missing_points.map(
+                                  (item, index) => (
+                                    <li key={`missing-${index}`}>{item}</li>
+                                  )
+                                )}
+                              </ul>
+                            </Alert>
+
+                            <Alert variant="info" className="small">
+                              <strong>Feedback</strong>
+                              <p className="mb-0 mt-2">
+                                {assessmentResult.feedback}
+                              </p>
+                            </Alert>
+
+                            {assessmentResult.sources.length > 0 && (
+                              <details>
+                                <summary className="small fw-semibold">
+                                  Sources used
+                                </summary>
+
+                                <ListGroup className="mt-2">
+                                  {assessmentResult.sources
+                                    .slice(0, 3)
+                                    .map((source) => (
+                                      <ListGroup.Item key={source.id}>
+                                        <div className="small">
+                                          <strong>
+                                            {source.section_title ??
+                                              "Unknown section"}
+                                          </strong>
+                                          {source.page_number && (
+                                            <span>
+                                              {" "}
+                                              — source page {source.page_number}
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        {source.similarity !== null && (
+                                          <small className="text-muted">
+                                            Similarity:{" "}
+                                            {source.similarity.toFixed(3)}
+                                          </small>
+                                        )}
+
+                                        <p className="mb-0 mt-2">
+                                          <small>
+                                            {source.content_preview.slice(0, 150)}
+                                            ...
+                                          </small>
+                                        </p>
+                                      </ListGroup.Item>
+                                    ))}
+                                </ListGroup>
+                              </details>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </Tab>
+              </Tabs>
             </Card.Body>
           </Card>
-        </Col>
-      </Row>
-    </Container>
+        </aside>
+      </main>
+    </div>
   );
 }
 
