@@ -17,9 +17,20 @@ app = FastAPI(title="Cyber Essentials Tutor API")
 
 frontend_origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
+frontend_origins_raw = os.getenv(
+    "FRONTEND_ORIGINS",
+    os.getenv("FRONTEND_ORIGIN", "http://localhost:5173"),
+)
+
+allowed_origins = [
+    origin.strip().rstrip("/")
+    for origin in frontend_origins_raw.split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_origin],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

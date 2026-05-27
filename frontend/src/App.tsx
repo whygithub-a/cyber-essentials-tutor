@@ -12,7 +12,8 @@ import {
   Tabs,
 } from "react-bootstrap";
 
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 const PDF_PATH =
   "/documents/cyber-essentials-requirements-for-it-infrastructure-v3-3.pdf";
