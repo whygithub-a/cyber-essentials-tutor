@@ -1,4 +1,5 @@
 import os
+import json
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -12,7 +13,7 @@ client = OpenAI(
 
 def create_embedding(text: str) -> list[float]:
     response = client.embeddings.create(
-        model=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
+        model= os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
         input=text,
     )
 
@@ -100,3 +101,94 @@ Answer the user's question using the available context.
     )
 
     return response.output_text
+
+def generate_assessment_feedback(
+    question_text: str,
+    scenario_context: str | None,
+    user_answer: str,
+    expected_points: list[str],
+    max_score: int,
+    retrieved_contexts: list[dict],
+) -> dict:
+    retrieved_text = "\n\n".join(
+        [
+            f"[Source {index + 1}: {item.get('section_title', 'Unknown section')}]\n{item.get('content', '')}"
+            for index, item in enumerate(retrieved_contexts)
+        ]
+    )
+
+    system_message = """
+You are an educational assessor for a Cyber Essentials learning prototype.
+
+You provide formative feedback only.
+You must not present the result as an official Cyber Essentials certification decision.
+Use the rubric and retrieved Cyber Essentials context to assess the learner's answer.
+Be fair, specific and constructive.
+Return only valid JSON.
+""".strip()
+
+    user_prompt = f"""
+Scenario:
+{scenario_context or ""}
+
+Question:
+{question_text}
+
+Learner answer:
+{user_answer}
+
+Rubric expected points:
+{json.dumps(expected_points, ensure_ascii=False, indent=2)}
+
+Maximum score:
+{max_score}
+
+Retrieved Cyber Essentials context:
+{retrieved_text if retrieved_text else "No context retrieved."}
+
+Return only this JSON structure:
+{{
+  "score": 0,
+  "strengths": ["..."],
+  "missing_points": ["..."],
+  "feedback": "..."
+}}
+
+The score must be an integer between 0 and {max_score}.
+""".strip()
+
+    response = client.responses.create(
+        model=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        input=[
+            {
+                "role": "system",
+                "content": system_message,
+            },
+            {
+                "role": "user",
+                "content": user_prompt,
+            },
+        ],
+    )
+
+    raw_text = response.output_text.strip()
+
+    if raw_text.startswith("```"):
+        raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError:
+        parsed = {
+            "score": 0,
+            "strengths": [],
+            "missing_points": ["The feedback could not be parsed into structured JSON."],
+            "feedback": raw_text,
+        }
+
+    parsed["score"] = max(0, min(int(parsed.get("score", 0)), max_score))
+    parsed.setdefault("strengths", [])
+    parsed.setdefault("missing_points", [])
+    parsed.setdefault("feedback", "")
+
+    return parsed
