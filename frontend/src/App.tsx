@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Badge,
@@ -58,14 +58,14 @@ const LEARNING_SECTIONS: LearningSection[] = [
     id: "security_update_management",
     title: "Security Update Management",
     description: "Supported software, updates, vulnerabilities and patches.",
-    page: 16,
+    page: 17,
     topicId: "security_update_management",
   },
   {
     id: "user_access_control",
     title: "User Access Control",
     description: "User accounts, privileges and authentication.",
-    page: 18,
+    page: 19,
     topicId: "user_access_control",
   },
   {
@@ -114,6 +114,76 @@ type AssessmentResponse = {
   sources: SourceItem[];
 };
 
+type ProgressItem = {
+  session_id: string;
+  topic_id: string;
+  completed: boolean;
+  latest_score: number | null;
+  max_score: number | null;
+  badge_awarded: string | null;
+  updated_at: string | null;
+};
+
+type ProgressResponse = {
+  session_id: string;
+  progress: ProgressItem[];
+};
+
+const SESSION_STORAGE_KEY = "cyber_tutor_session_id";
+
+function getOrCreateSessionId(): string {
+  const existingSessionId = window.localStorage.getItem(SESSION_STORAGE_KEY);
+
+  if (existingSessionId) {
+    return existingSessionId;
+  }
+
+  const newSessionId = `anon_${crypto.randomUUID()}`;
+  window.localStorage.setItem(SESSION_STORAGE_KEY, newSessionId);
+
+  return newSessionId;
+}
+
+function formatBadgeLabel(badge: string | null): string {
+  if (badge === "strong_understanding") {
+    return "Strong understanding";
+  }
+
+  if (badge === "developing_understanding") {
+    return "Developing understanding";
+  }
+
+  if (badge === "needs_review") {
+    return "Needs review";
+  }
+
+  if (badge === "completed") {
+    return "Completed";
+  }
+
+  return "Not completed";
+}
+
+function getBadgeVariant(badge: string | null): string {
+  if (badge === "strong_understanding") {
+    return "success";
+  }
+
+  if (badge === "developing_understanding") {
+    return "primary";
+  }
+
+  if (badge === "needs_review") {
+    return "warning";
+  }
+
+  if (badge === "completed") {
+    return "info";
+  }
+
+  return "secondary";
+}
+
 function App() {
   const [selectedSection, setSelectedSection] = useState<LearningSection>(
     LEARNING_SECTIONS[0]
@@ -134,7 +204,82 @@ function App() {
   const [submittingAssessment, setSubmittingAssessment] = useState(false);
   const [assessmentError, setAssessmentError] = useState("");
 
+  const [sessionId, setSessionId] = useState("");
+  const [progressItems, setProgressItems] = useState<ProgressItem[]>([]);
+  const [loadingProgress, setLoadingProgress] = useState(false);
+  const [progressError, setProgressError] = useState("");
+
   const pdfUrl = `${PDF_PATH}#page=${selectedSection.page}`;
+
+  const loadProgress = async (activeSessionId: string) => {
+    if (!activeSessionId) {
+      return;
+    }
+
+    setLoadingProgress(true);
+    setProgressError("");
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/progress/${activeSessionId}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Progress endpoint returned ${response.status}`);
+      }
+
+      const data: ProgressResponse = await response.json();
+      setProgressItems(data.progress);
+    } catch (err) {
+      setProgressError(
+        err instanceof Error ? err.message : "Failed to load progress"
+      );
+    } finally {
+      setLoadingProgress(false);
+    }
+  };
+
+  const updateProgress = async (
+    topicId: string,
+    latestScore: number,
+    maxScore: number
+  ) => {
+    const activeSessionId = sessionId || getOrCreateSessionId();
+
+    if (!sessionId) {
+      setSessionId(activeSessionId);
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/progress/update`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          session_id: activeSessionId,
+          topic_id: topicId,
+          completed: true,
+          latest_score: latestScore,
+          max_score: maxScore,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Progress update endpoint returned ${response.status}`);
+      }
+
+      await loadProgress(activeSessionId);
+    } catch (err) {
+      setProgressError(
+        err instanceof Error ? err.message : "Failed to update progress"
+      );
+    }
+  };
+
+  const getProgressForTopic = (topicId: string): ProgressItem | undefined => {
+    return progressItems.find((item) => item.topic_id === topicId);
+  };
 
   const loadAssessmentQuestion = async (section: LearningSection) => {
     setAssessmentQuestion(null);
@@ -154,7 +299,9 @@ function App() {
       );
 
       if (!response.ok) {
-        throw new Error(`Assessment question endpoint returned ${response.status}`);
+        throw new Error(
+          `Assessment question endpoint returned ${response.status}`
+        );
       }
 
       const data: AssessmentQuestion = await response.json();
@@ -262,6 +409,14 @@ function App() {
 
       const data: AssessmentResponse = await response.json();
       setAssessmentResult(data);
+
+      if (selectedSection.topicId) {
+        await updateProgress(
+          selectedSection.topicId,
+          data.score,
+          data.max_score
+        );
+      }
     } catch (err) {
       setAssessmentError(
         err instanceof Error ? err.message : "Failed to submit assessment answer"
@@ -270,6 +425,12 @@ function App() {
       setSubmittingAssessment(false);
     }
   };
+
+  useEffect(() => {
+    const activeSessionId = getOrCreateSessionId();
+    setSessionId(activeSessionId);
+    loadProgress(activeSessionId);
+  }, []);
 
   return (
     <Container fluid className="py-4 px-4">
@@ -296,6 +457,67 @@ function App() {
                   </ListGroup.Item>
                 ))}
               </ListGroup>
+            </Card.Body>
+          </Card>
+
+          <Card className="mt-3">
+            <Card.Body>
+              <Card.Title>Progress Dashboard</Card.Title>
+              <Card.Text>
+                Progress is tracked anonymously in this browser session.
+              </Card.Text>
+
+              {loadingProgress && (
+                <Alert variant="info">
+                  <Spinner animation="border" size="sm" className="me-2" />
+                  Loading progress...
+                </Alert>
+              )}
+
+              {progressError && (
+                <Alert variant="warning">{progressError}</Alert>
+              )}
+
+              <ListGroup>
+                {LEARNING_SECTIONS.filter((section) => section.topicId).map(
+                  (section) => {
+                    const progress = getProgressForTopic(section.topicId!);
+
+                    return (
+                      <ListGroup.Item key={`progress-${section.id}`}>
+                        <div className="d-flex justify-content-between align-items-start">
+                          <div>
+                            <strong>{section.title}</strong>
+                            <br />
+                            {progress ? (
+                              <small>
+                                Score: {progress.latest_score}/
+                                {progress.max_score}
+                              </small>
+                            ) : (
+                              <small>Assessment not completed</small>
+                            )}
+                          </div>
+
+                          <Badge
+                            bg={getBadgeVariant(
+                              progress?.badge_awarded ?? null
+                            )}
+                          >
+                            {formatBadgeLabel(progress?.badge_awarded ?? null)}
+                          </Badge>
+                        </div>
+                      </ListGroup.Item>
+                    );
+                  }
+                )}
+              </ListGroup>
+
+              {sessionId && (
+                <p className="mt-3 mb-0">
+                  <small>Anonymous session: {sessionId.slice(0, 18)}...</small>
+                </p>
+              )}
             </Card.Body>
           </Card>
         </Col>
@@ -394,7 +616,10 @@ function App() {
                                     {source.section_title ?? "Unknown section"}
                                   </strong>
                                   {source.page_number && (
-                                    <span> — source page {source.page_number}</span>
+                                    <span>
+                                      {" "}
+                                      — source page {source.page_number}
+                                    </span>
                                   )}
                                 </div>
 
@@ -473,11 +698,13 @@ function App() {
                 <Alert variant="danger">{assessmentError}</Alert>
               )}
 
-              {selectedSection.topicId && !assessmentQuestion && !loadingAssessmentQuestion && (
-                <Button onClick={() => loadAssessmentQuestion(selectedSection)}>
-                  Load assessment question
-                </Button>
-              )}
+              {selectedSection.topicId &&
+                !assessmentQuestion &&
+                !loadingAssessmentQuestion && (
+                  <Button onClick={() => loadAssessmentQuestion(selectedSection)}>
+                    Load assessment question
+                  </Button>
+                )}
 
               {assessmentQuestion && (
                 <>
@@ -524,7 +751,8 @@ function App() {
                   <hr />
 
                   <h5>
-                    Score: {assessmentResult.score}/{assessmentResult.max_score}
+                    Score: {assessmentResult.score}/
+                    {assessmentResult.max_score}
                   </h5>
 
                   <Alert variant="success">
@@ -561,7 +789,10 @@ function App() {
                                 {source.section_title ?? "Unknown section"}
                               </strong>
                               {source.page_number && (
-                                <span> — source page {source.page_number}</span>
+                                <span>
+                                  {" "}
+                                  — source page {source.page_number}
+                                </span>
                               )}
                             </div>
 
