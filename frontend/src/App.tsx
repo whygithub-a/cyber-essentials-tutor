@@ -112,6 +112,11 @@ type AssessmentQuestion = {
   question_text: string;
   scenario_context: string | null;
   difficulty: string | null;
+  question_order?: number | null;
+  official_ref?: string | null;
+  source_title?: string | null;
+  question_position?: number;
+  total_questions?: number;
 };
 
 type AssessmentResponse = {
@@ -131,11 +136,36 @@ type ProgressItem = {
   max_score: number | null;
   badge_awarded: string | null;
   updated_at: string | null;
+  total_questions: number;
+  attempted_questions: number;
+  mastery_percentage: number;
+  xp: number;
+};
+
+type BadgeCounts = {
+  mastered: number;
+  gold: number;
+  silver: number;
+  bronze: number;
+  started: number;
+  not_started: number;
 };
 
 type ProgressResponse = {
   session_id: string;
+  overall_mastery: number;
+  total_xp: number;
+  badges: BadgeCounts;
   progress: ProgressItem[];
+};
+
+const DEFAULT_BADGE_COUNTS: BadgeCounts = {
+  mastered: 0,
+  gold: 0,
+  silver: 0,
+  bronze: 0,
+  started: 0,
+  not_started: 0,
 };
 
 const SESSION_STORAGE_KEY = "cyber_tutor_session_id";
@@ -154,19 +184,25 @@ function getOrCreateSessionId(): string {
 }
 
 function formatBadgeLabel(badge: string | null): string {
-  if (badge === "strong_understanding") return "Strong";
-  if (badge === "developing_understanding") return "Developing";
-  if (badge === "needs_review") return "Review";
-  if (badge === "completed") return "Completed";
-  return "Not done";
+  if (badge === "mastered") return "Mastered";
+  if (badge === "gold") return "Gold";
+  if (badge === "silver") return "Silver";
+  if (badge === "bronze") return "Bronze";
+  if (badge === "started") return "Started";
+  return "Not Started";
 }
 
 function getBadgeVariant(badge: string | null): string {
-  if (badge === "strong_understanding") return "success";
-  if (badge === "developing_understanding") return "primary";
-  if (badge === "needs_review") return "warning";
-  if (badge === "completed") return "info";
-  return "secondary";
+  if (badge === "mastered") return "success";
+  if (badge === "gold") return "warning";
+  if (badge === "silver") return "info";
+  if (badge === "bronze") return "primary";
+  if (badge === "started") return "secondary";
+  return "light";
+}
+
+function shouldUseDarkBadgeText(badge: string | null): boolean {
+  return badge === "gold" || badge === "silver" || badge === "not_started";
 }
 
 function App() {
@@ -191,18 +227,34 @@ function App() {
 
   const [sessionId, setSessionId] = useState("");
   const [progressItems, setProgressItems] = useState<ProgressItem[]>([]);
+  const [overallMastery, setOverallMastery] = useState(0);
+  const [totalXp, setTotalXp] = useState(0);
+  const [badgeCounts, setBadgeCounts] =
+    useState<BadgeCounts>(DEFAULT_BADGE_COUNTS);
   const [loadingProgress, setLoadingProgress] = useState(false);
   const [progressError, setProgressError] = useState("");
 
   const pdfUrl = `${PDF_PATH}#page=${selectedSection.page}&zoom=60`;
-  const assessableSections = LEARNING_SECTIONS.filter(
-    (section) => section.topicId
+
+  const totalQuestions = progressItems.reduce(
+    (total, item) => total + item.total_questions,
+    0
   );
-  const completedCount = progressItems.filter((item) => item.completed).length;
-  const progressPercentage =
-    assessableSections.length > 0
-      ? Math.round((completedCount / assessableSections.length) * 100)
-      : 0;
+
+  const attemptedQuestions = progressItems.reduce(
+    (total, item) => total + item.attempted_questions,
+    0
+  );
+
+  const totalKnowledgeScore = progressItems.reduce(
+    (total, item) => total + (item.latest_score ?? 0),
+    0
+  );
+
+  const totalPossibleKnowledgeScore = progressItems.reduce(
+    (total, item) => total + (item.max_score ?? 0),
+    0
+  );
 
   const loadProgress = async (activeSessionId: string) => {
     if (!activeSessionId) return;
@@ -220,7 +272,14 @@ function App() {
       }
 
       const data: ProgressResponse = await response.json();
-      setProgressItems(data.progress);
+
+      setProgressItems(data.progress ?? []);
+      setOverallMastery(data.overall_mastery ?? 0);
+      setTotalXp(data.total_xp ?? 0);
+      setBadgeCounts({
+        ...DEFAULT_BADGE_COUNTS,
+        ...(data.badges ?? {}),
+      });
     } catch (err) {
       setProgressError(
         err instanceof Error ? err.message : "Failed to load progress"
@@ -232,6 +291,7 @@ function App() {
 
   const updateProgress = async (
     topicId: string,
+    questionId: string,
     latestScore: number,
     maxScore: number
   ) => {
@@ -250,6 +310,7 @@ function App() {
         body: JSON.stringify({
           session_id: activeSessionId,
           topic_id: topicId,
+          question_id: questionId,
           completed: true,
           latest_score: latestScore,
           max_score: maxScore,
@@ -272,7 +333,11 @@ function App() {
     return progressItems.find((item) => item.topic_id === topicId);
   };
 
-  const loadAssessmentQuestion = async (section: LearningSection) => {
+  const loadAssessmentQuestion = async (
+    section: LearningSection,
+    currentQuestionId?: string,
+    direction?: "next" | "previous"
+  ) => {
     setAssessmentQuestion(null);
     setAssessmentAnswer("");
     setAssessmentResult(null);
@@ -283,8 +348,28 @@ function App() {
     setLoadingAssessmentQuestion(true);
 
     try {
+      const activeSessionId = sessionId || getOrCreateSessionId();
+
+      if (!sessionId) {
+        setSessionId(activeSessionId);
+      }
+
+      const queryParams = new URLSearchParams();
+
+      queryParams.set("session_id", activeSessionId);
+
+      if (currentQuestionId && direction === "next") {
+        queryParams.set("exclude_question_id", currentQuestionId);
+      }
+
+      if (currentQuestionId && direction === "previous") {
+        queryParams.set("previous_question_id", currentQuestionId);
+      }
+
       const response = await fetch(
-        `${API_BASE_URL}/api/assessment/question/${section.topicId}`
+        `${API_BASE_URL}/api/assessment/question/${
+          section.topicId
+        }?${queryParams.toString()}`
       );
 
       if (!response.ok) {
@@ -297,7 +382,9 @@ function App() {
       setAssessmentQuestion(data);
     } catch (err) {
       setAssessmentError(
-        err instanceof Error ? err.message : "Failed to load assessment question"
+        err instanceof Error
+          ? err.message
+          : "Failed to load assessment question"
       );
     } finally {
       setLoadingAssessmentQuestion(false);
@@ -354,7 +441,9 @@ function App() {
         },
       ]);
     } catch (err) {
-      setChatError(err instanceof Error ? err.message : "Failed to get AI answer");
+      setChatError(
+        err instanceof Error ? err.message : "Failed to get AI answer"
+      );
     } finally {
       setLoadingAnswer(false);
     }
@@ -395,17 +484,42 @@ function App() {
       if (selectedSection.topicId) {
         await updateProgress(
           selectedSection.topicId,
+          assessmentQuestion.id,
           data.score,
           data.max_score
         );
       }
     } catch (err) {
       setAssessmentError(
-        err instanceof Error ? err.message : "Failed to submit assessment answer"
+        err instanceof Error
+          ? err.message
+          : "Failed to submit assessment answer"
       );
     } finally {
       setSubmittingAssessment(false);
     }
+  };
+
+  const loadPreviousAssessmentQuestion = async () => {
+    if (!selectedSection.topicId || !assessmentQuestion) return;
+
+    await loadAssessmentQuestion(
+      selectedSection,
+      assessmentQuestion.id,
+      "previous"
+    );
+  };
+
+  const loadNextAssessmentQuestion = async () => {
+    if (!selectedSection.topicId || !assessmentQuestion) return;
+
+    await loadAssessmentQuestion(selectedSection, assessmentQuestion.id, "next");
+  };
+
+  const retryCurrentAssessmentQuestion = () => {
+    setAssessmentAnswer("");
+    setAssessmentResult(null);
+    setAssessmentError("");
   };
 
   useEffect(() => {
@@ -440,12 +554,13 @@ function App() {
             Cyber Essentials Intelligent Tutoring System
           </h5>
           <small className="text-muted">
-            PDF learning, grounded AI tutoring, formative assessment and progress tracking
+            PDF learning, grounded AI tutoring, formative assessment and
+            progress tracking
           </small>
         </div>
 
         <Badge bg="warning" text="dark" style={{ fontSize: "0.8rem" }}>
-          Learning prototype only — not an official certification decision tool
+          Learning Prototype Only
         </Badge>
       </header>
 
@@ -458,106 +573,221 @@ function App() {
           padding: "12px",
         }}
       >
-        <aside style={{ minHeight: 0 }}>
-          <Card className="h-100 border-0 shadow-sm">
+        <aside
+          style={{
+            minHeight: 0,
+            display: "grid",
+            gridTemplateRows: "auto 1fr auto",
+            gap: "10px",
+          }}
+        >
+          <Card className="border-0 shadow-sm">
+            <Card.Body style={{ padding: "12px" }}>
+              <div className="d-flex justify-content-between align-items-center">
+                <h6 className="mb-0">Progress</h6>
+                <Badge bg="dark">{totalXp} XP</Badge>
+              </div>
+
+              <div className="mt-2">
+                <div className="d-flex justify-content-between align-items-center">
+                  <small className="text-muted">Overall Mastery</small>
+                  <Badge bg="primary">{overallMastery}%</Badge>
+                </div>
+
+                <ProgressBar
+                  now={overallMastery}
+                  className="my-2"
+                  style={{ height: "8px" }}
+                />
+
+                <small className="text-muted">
+                  Knowledge Score: {totalKnowledgeScore}/
+                  {totalPossibleKnowledgeScore}
+                </small>
+
+                <br />
+
+                <small className="text-muted">
+                  {attemptedQuestions}/{totalQuestions} questions attempted
+                </small>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "5px",
+                  marginTop: "10px",
+                }}
+              >
+                <Badge bg="success">Mastered {badgeCounts.mastered}</Badge>
+                <Badge bg="warning" text="dark">
+                  Gold {badgeCounts.gold}
+                </Badge>
+                <Badge bg="info" text="dark">
+                  Silver {badgeCounts.silver}
+                </Badge>
+                <Badge bg="primary">Bronze {badgeCounts.bronze}</Badge>
+              </div>
+
+              {progressError && (
+                <Alert variant="warning" className="py-1 px-2 small mt-2 mb-0">
+                  {progressError}
+                </Alert>
+              )}
+
+              {loadingProgress && (
+                <small className="text-muted d-block mt-2">
+                  <Spinner animation="border" size="sm" className="me-1" />
+                  Loading progress...
+                </small>
+              )}
+            </Card.Body>
+          </Card>
+
+          <Card className="border-0 shadow-sm" style={{ minHeight: 0 }}>
             <Card.Body
               style={{
                 height: "100%",
                 display: "flex",
                 flexDirection: "column",
-                padding: "14px",
+                padding: "12px",
                 overflow: "hidden",
               }}
             >
-              <div style={{ marginBottom: "10px", textAlign: "center" }}>
-                <h6 className="mb-1">Learning Sections</h6>
-                <small className="text-muted">
-                  Select a section to open the PDF.
-                </small>
+              <div style={{ marginBottom: "8px", textAlign: "center" }}>
+                <h6 className="mb-0">Learning Sections</h6>
               </div>
 
-              <ListGroup variant="flush" style={{ marginBottom: "12px" }}>
-                {LEARNING_SECTIONS.map((section) => (
-                  <ListGroup.Item
-                    key={section.id}
-                    action
-                    active={selectedSection.id === section.id}
-                    onClick={() => selectSection(section)}
-                    style={{
-                      padding: "10px 8px",
-                      borderRadius: "8px",
-                      marginBottom: "4px",
-                      textAlign: "center",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {section.shortTitle}
-                  </ListGroup.Item>
-                ))}
+              <ListGroup
+                variant="flush"
+                style={{
+                  minHeight: 0,
+                  overflowY: "auto",
+                  display: "grid",
+                  gap: "6px",
+                }}
+              >
+                {LEARNING_SECTIONS.map((section) => {
+                  const progress = section.topicId
+                    ? getProgressForTopic(section.topicId)
+                    : undefined;
+
+                  const mastery = progress?.mastery_percentage ?? 0;
+                  const knowledgeScore = progress?.latest_score ?? 0;
+                  const maxKnowledgeScore = progress?.max_score ?? 0;
+                  const badge = progress?.badge_awarded ?? "not_started";
+                  const xp = progress?.xp ?? 0;
+
+                  return (
+                    <ListGroup.Item
+                      key={section.id}
+                      action
+                      active={selectedSection.id === section.id}
+                      onClick={() => selectSection(section)}
+                      style={{
+                        padding: "7px 6px",
+                        borderRadius: "9px",
+                        marginBottom: "0",
+                        textAlign: "center",
+                        fontWeight: 600,
+                        fontSize: "0.84rem",
+                        border: "1px solid #e1e5ea",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: "3px",
+                          justifyItems: "center",
+                        }}
+                      >
+                        <span>{section.shortTitle}</span>
+
+                        {section.topicId && (
+                          <>
+                            <ProgressBar
+                              now={mastery}
+                              style={{
+                                width: "100%",
+                                height: "6px",
+                              }}
+                            />
+
+                            <div
+                              style={{
+                                width: "100%",
+                                display: "grid",
+                                gridTemplateColumns: "1fr auto auto",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              <small
+                                className={
+                                  selectedSection.id === section.id
+                                    ? ""
+                                    : "text-muted"
+                                }
+                                style={{
+                                  fontSize: "0.68rem",
+                                  textAlign: "left",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {knowledgeScore}/{maxKnowledgeScore} · {mastery}%
+                              </small>
+
+                              <Badge
+                                bg={getBadgeVariant(badge)}
+                                text={
+                                  shouldUseDarkBadgeText(badge)
+                                    ? "dark"
+                                    : undefined
+                                }
+                                style={{
+                                  fontSize: "0.62rem",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {formatBadgeLabel(badge)}
+                              </Badge>
+
+                              <small
+                                className={
+                                  selectedSection.id === section.id
+                                    ? ""
+                                    : "text-muted"
+                                }
+                                style={{
+                                  fontSize: "0.68rem",
+                                  textAlign: "right",
+                                  whiteSpace: "nowrap",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {xp} XP
+                              </small>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </ListGroup.Item>
+                  );
+                })}
               </ListGroup>
-
-              <div style={{ borderTop: "1px solid #e1e5ea", paddingTop: "12px" }}>
-                <div className="d-flex justify-content-between align-items-center">
-                  <h6 className="mb-0">Progress</h6>
-                  <Badge bg="primary">{progressPercentage}%</Badge>
-                </div>
-                <small className="text-muted">
-                  {completedCount}/{assessableSections.length} assessments completed
-                </small>
-
-                <ProgressBar now={progressPercentage} className="my-2" />
-
-                {progressError && (
-                  <Alert variant="warning" className="py-1 px-2 small">
-                    {progressError}
-                  </Alert>
-                )}
-
-                {loadingProgress ? (
-                  <small className="text-muted">
-                    <Spinner animation="border" size="sm" className="me-1" />
-                    Loading...
-                  </small>
-                ) : (
-                  <div style={{ display: "grid", gap: "6px", marginTop: "8px" }}>
-                    {assessableSections.map((section) => {
-                      const progress = getProgressForTopic(section.topicId!);
-
-                      return (
-                        <div
-                          key={`progress-${section.id}`}
-                          className="d-flex justify-content-between align-items-center"
-                        >
-                          <small>{section.shortTitle}</small>
-                          <Badge
-                            bg={getBadgeVariant(progress?.badge_awarded ?? null)}
-                          >
-                            {progress
-                              ? `${progress.latest_score}/${progress.max_score}`
-                              : formatBadgeLabel(null)}
-                          </Badge>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {sessionId && (
-                <div
-                  style={{
-                    marginTop: "auto",
-                    paddingTop: "12px",
-                    borderTop: "1px solid #e1e5ea",
-                  }}
-                >
-                  <small className="text-muted">
-                    Session: {sessionId.slice(0, 16)}...
-                  </small>
-                </div>
-              )}
             </Card.Body>
           </Card>
+
+          {sessionId && (
+            <Card className="border-0 shadow-sm">
+              <Card.Body style={{ padding: "8px 10px" }}>
+                <small className="text-muted">
+                  Session: {sessionId.slice(0, 16)}...
+                </small>
+              </Card.Body>
+            </Card>
+          )}
         </aside>
 
         <section style={{ minHeight: 0 }}>
@@ -625,7 +855,8 @@ function App() {
                   >
                     <div>
                       <small className="text-muted d-block mb-2">
-                        Ask questions grounded in retrieved Cyber Essentials content.
+                        Ask questions grounded in retrieved Cyber Essentials
+                        content.
                       </small>
 
                       {chatError && <Alert variant="danger">{chatError}</Alert>}
@@ -646,7 +877,8 @@ function App() {
                         <Alert variant="secondary" className="mb-0 small">
                           Try asking:{" "}
                           <strong>
-                            What should an organisation do when an employee leaves?
+                            What should an organisation do when an employee
+                            leaves?
                           </strong>
                         </Alert>
                       )}
@@ -658,7 +890,9 @@ function App() {
                         >
                           <Card.Body className="p-3">
                             <Badge
-                              bg={message.role === "user" ? "primary" : "success"}
+                              bg={
+                                message.role === "user" ? "primary" : "success"
+                              }
                               className="mb-2"
                             >
                               {message.role === "user" ? "You" : "AI Tutor"}
@@ -682,7 +916,8 @@ function App() {
                                     <ListGroup.Item key={source.id}>
                                       <div className="small">
                                         <strong>
-                                          {source.section_title ?? "Unknown section"}
+                                          {source.section_title ??
+                                            "Unknown section"}
                                         </strong>
                                         {source.page_number && (
                                           <span>
@@ -701,7 +936,8 @@ function App() {
 
                                       <p className="mb-0 mt-2">
                                         <small>
-                                          {source.content_preview.slice(0, 150)}...
+                                          {source.content_preview.slice(0, 150)}
+                                          ...
                                         </small>
                                       </p>
                                     </ListGroup.Item>
@@ -715,7 +951,11 @@ function App() {
 
                       {loadingAnswer && (
                         <Alert variant="info" className="mb-0 small">
-                          <Spinner animation="border" size="sm" className="me-2" />
+                          <Spinner
+                            animation="border"
+                            size="sm"
+                            className="me-2"
+                          />
                           Retrieving context and generating an answer...
                         </Alert>
                       )}
@@ -759,13 +999,18 @@ function App() {
                   >
                     {!selectedSection.topicId && (
                       <Alert variant="secondary" className="small">
-                        Assessment is available for the five technical control themes.
+                        Assessment is available for the five technical control
+                        themes.
                       </Alert>
                     )}
 
                     {selectedSection.topicId && loadingAssessmentQuestion && (
                       <Alert variant="info" className="small">
-                        <Spinner animation="border" size="sm" className="me-2" />
+                        <Spinner
+                          animation="border"
+                          size="sm"
+                          className="me-2"
+                        />
                         Loading question...
                       </Alert>
                     )}
@@ -783,19 +1028,82 @@ function App() {
                           size="sm"
                           onClick={() => loadAssessmentQuestion(selectedSection)}
                         >
-                          Load assessment question
+                          Load Assessment Question
                         </Button>
                       )}
 
                     {assessmentQuestion && (
                       <>
-                        <div className="d-flex justify-content-between align-items-center mb-3">
-                          <Badge bg="primary">{selectedSection.shortTitle}</Badge>
-                          {assessmentQuestion.difficulty && (
-                            <Badge bg="secondary">
-                              {assessmentQuestion.difficulty}
-                            </Badge>
-                          )}
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                            gap: "6px",
+                            marginBottom: "12px",
+                          }}
+                        >
+                          <Button
+                            size="sm"
+                            variant="outline-secondary"
+                            onClick={retryCurrentAssessmentQuestion}
+                            disabled={
+                              !assessmentResult ||
+                              loadingAssessmentQuestion ||
+                              submittingAssessment
+                            }
+                            style={{
+                              fontSize: "0.72rem",
+                              padding: "5px 4px",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Retry Question
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline-secondary"
+                            onClick={loadPreviousAssessmentQuestion}
+                            disabled={
+                              loadingAssessmentQuestion ||
+                              submittingAssessment ||
+                              !assessmentQuestion
+                            }
+                            style={{
+                              fontSize: "0.72rem",
+                              padding: "5px 4px",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Previous Question
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline-primary"
+                            onClick={loadNextAssessmentQuestion}
+                            disabled={
+                              !assessmentResult ||
+                              loadingAssessmentQuestion ||
+                              submittingAssessment
+                            }
+                            style={{
+                              fontSize: "0.72rem",
+                              padding: "5px 4px",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {loadingAssessmentQuestion
+                              ? "Loading..."
+                              : "Next Question"}
+                          </Button>
+                        </div>
+
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <Badge bg="secondary">
+                            Question {assessmentQuestion.question_position ?? 1}{" "}
+                            of {assessmentQuestion.total_questions ?? 1}
+                          </Badge>
                         </div>
 
                         {assessmentQuestion.scenario_context && (
@@ -826,9 +1134,13 @@ function App() {
                         <Button
                           size="sm"
                           onClick={submitAssessment}
-                          disabled={submittingAssessment || !assessmentAnswer.trim()}
+                          disabled={
+                            submittingAssessment || !assessmentAnswer.trim()
+                          }
                         >
-                          {submittingAssessment ? "Submitting..." : "Submit answer"}
+                          {submittingAssessment
+                            ? "Submitting..."
+                            : "Submit Answer"}
                         </Button>
 
                         {assessmentResult && (
@@ -860,9 +1172,11 @@ function App() {
                             <Alert variant="success" className="small">
                               <strong>Strengths</strong>
                               <ul className="mb-0 mt-2">
-                                {assessmentResult.strengths.map((item, index) => (
-                                  <li key={`strength-${index}`}>{item}</li>
-                                ))}
+                                {assessmentResult.strengths.map(
+                                  (item, index) => (
+                                    <li key={`strength-${index}`}>{item}</li>
+                                  )
+                                )}
                               </ul>
                             </Alert>
 
@@ -917,7 +1231,10 @@ function App() {
 
                                         <p className="mb-0 mt-2">
                                           <small>
-                                            {source.content_preview.slice(0, 150)}
+                                            {source.content_preview.slice(
+                                              0,
+                                              150
+                                            )}
                                             ...
                                           </small>
                                         </p>
