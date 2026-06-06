@@ -6,6 +6,7 @@ import {
   Card,
   Form,
   ListGroup,
+  Modal,
   ProgressBar,
   Spinner,
   Tab,
@@ -206,6 +207,8 @@ function shouldUseDarkBadgeText(badge: string | null): boolean {
 }
 
 function App() {
+  const [showIntroModal, setShowIntroModal] = useState(true);
+
   const [selectedSection, setSelectedSection] = useState<LearningSection>(
     LEARNING_SECTIONS[0]
   );
@@ -1254,6 +1257,77 @@ function App() {
           </Card>
         </aside>
       </main>
+
+      <Modal
+        show={showIntroModal}
+        onHide={() => setShowIntroModal(false)}
+        centered
+        backdrop="static"
+        keyboard={false}
+        scrollable
+      >
+        <Modal.Header>
+          <Modal.Title>This is A Learning Prototype</Modal.Title>
+        </Modal.Header>
+
+        <Modal.Body>
+          <Alert variant="warning" className="small">
+            This system supports Cyber Essentials learning only. It is not an
+            official certification platform and does not make compliance
+            decisions.
+          </Alert>
+
+          <div style={{ display: "grid", gap: "14px" }}>
+            <section>
+              <h6>Do not enter real sensitive information</h6>
+              <p className="small mb-0">
+                Please do not enter real company names, employee names, IP
+                addresses, usernames, passwords, credentials, internal
+                configurations or confidential security details.
+              </p>
+            </section>
+
+            <section>
+              <h6>How your inputs are used</h6>
+              <p className="small mb-0">
+                Your questions and assessment answers are processed to generate
+                AI tutor responses and formative feedback. Raw chat transcripts
+                and raw assessment answer text are not stored in the application
+                database.
+              </p>
+            </section>
+
+            <section>
+              <h6>Progress tracking</h6>
+              <p className="small mb-0">
+                A random browser session ID is used to save limited progress
+                metadata, such as topic ID, question ID, score, maximum score and
+                timestamp. This allows the system to restore progress, mastery,
+                XP and badges.
+              </p>
+            </section>
+
+            <section>
+              <h6>Learning use only</h6>
+              <p className="small mb-0">
+                Assessment scores and AI feedback are formative learning support.
+                They are not official Cyber Essentials advice, audit evidence or
+                certification results.
+              </p>
+            </section>
+          </div>
+        </Modal.Body>
+
+        <Modal.Footer>
+          <Button
+            variant="primary"
+            onClick={() => setShowIntroModal(false)}
+            style={{ width: "100%" }}
+          >
+            I Understand and Continue
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 }
