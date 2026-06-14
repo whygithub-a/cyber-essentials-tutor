@@ -1,352 +1,399 @@
 # Cyber Essentials Intelligent Tutoring System
 
-## Project Overview
+This project is a web-based intelligent tutoring prototype designed to support learning of the Cyber Essentials requirements. It combines document-based learning, retrieval-augmented AI tutoring, open-ended formative assessment, and lightweight gamified progress tracking.
 
-This repository contains the software prototype for an MSc dissertation project. The project is an AI-supported Intelligent Tutoring System designed to help learners study the UK Cyber Essentials requirements.
+The system is intended for educational use only. It is not an official Cyber Essentials certification platform and does not make compliance decisions.
 
-The system provides a structured Cyber Essentials learning interface, a Retrieval-Augmented Generation based AI tutor, scenario-based assessment feedback, and anonymous progress tracking.
+## Overview
 
-This prototype is for educational and research purposes only. It is not an official Cyber Essentials certification platform and does not provide official certification decisions, legal compliance advice, or professional cybersecurity consultancy.
+The prototype helps learners study Cyber Essentials by providing:
 
-## Project Aim
+* Section-based navigation through the Cyber Essentials requirements PDF.
+* An AI tutor that answers questions using retrieved Cyber Essentials content.
+* Scenario-based formative assessment questions.
+* AI-generated feedback based on rubrics and retrieved source material.
+* Question-level progress tracking.
+* Gamified progress indicators, including mastery percentage, XP and badges.
+* A privacy and usage notice shown when the user opens the application.
 
-The aim of this project is to design, implement, and evaluate an AI-driven Intelligent Tutoring System that supports Cyber Essentials learning for small enterprise IT teams and non-specialist administrators.
+The system is designed as a learning support tool rather than a compliance auditing or certification decision system.
 
-The system focuses on the main Cyber Essentials learning sections:
+## Main Features
 
-- Definitions
-- Scope
-- Firewalls
-- Secure Configuration
-- Security Update Management
-- User Access Control
-- Malware Protection
+### PDF-Based Learning Interface
 
-The five technical control themes are used for assessment and progress tracking.
+The central panel displays the Cyber Essentials requirements document as an embedded PDF. Users can select learning sections from the left-side menu, and the PDF opens at the relevant page.
 
-## Current Implementation Status
+Current learning sections include:
 
-The current prototype includes the following working components.
+* Definitions
+* Scope
+* Firewalls
+* Secure Configuration
+* Security Update Management
+* User Access Control
+* Malware Protection
 
-### 1. PDF-Based Learning Interface
+### AI Tutor
 
-The frontend provides a section-based learning interface. Users can select a Cyber Essentials section and read the official PDF document inside the application.
+The AI Tutor allows users to ask Cyber Essentials-related questions. The backend retrieves relevant chunks from the Cyber Essentials knowledge base and uses Azure OpenAI to generate a grounded educational response.
 
-The current section navigation includes:
+The tutor is instructed to:
 
-- Definitions
-- Scope
-- Firewalls
-- Secure Configuration
-- Security Update Management
-- User Access Control
-- Malware Protection
+* Use retrieved Cyber Essentials context where possible.
+* Provide clear learner-friendly explanations.
+* Avoid making official certification or compliance decisions.
+* Show source information where relevant.
 
-### 2. RAG-Based AI Tutor
+### Formative Assessment
 
-The system includes an AI tutor that answers user questions using Retrieval-Augmented Generation.
+The Assessment module provides open-ended scenario-based questions for the five Cyber Essentials technical control themes:
 
-The implemented workflow is:
+* Firewalls
+* Secure Configuration
+* Security Update Management
+* User Access Control
+* Malware Protection
 
-```text
-User question
-    ↓
-Azure OpenAI embedding model
-    ↓
-Supabase pgvector similarity search
-    ↓
-Relevant Cyber Essentials document chunks
-    ↓
-Azure OpenAI chat model
-    ↓
-Grounded answer with source references
-```
+Each question is linked to a rubric stored in the database. When a learner submits an answer, the backend retrieves the relevant question, rubric and document context, then uses Azure OpenAI to generate structured formative feedback.
 
-The system first uses the currently selected section as a retrieval hint. If the selected section does not provide sufficiently relevant results, the backend can perform wider retrieval across the Cyber Essentials knowledge base.
+Feedback includes:
 
-### 3. Knowledge Base and Vector Database
+* Score
+* Strengths
+* Missing points
+* Formative feedback
+* Retrieved sources used
 
-The Cyber Essentials requirements PDF is processed into curated document chunks.
+Assessment scores are for learning purposes only and should not be interpreted as certification results.
 
-The current knowledge base includes:
+### Assessment Navigation
 
-- Definitions
-- Backing up your data
-- Scope
-- Firewalls
-- Secure Configuration
-- Security Update Management
-- User Access Control
-- Malware Protection
+The assessment interface supports:
 
-The `Further guidance` section is excluded from the first prototype to keep the knowledge base aligned with the core dissertation scope.
+* `Retry Question` — clears the current answer and feedback so the learner can attempt the same question again.
+* `Previous Question` — loads the previous question in the current topic.
+* `Next Question` — loads the next question after feedback has been shown.
+* Question numbering, such as `Question 1 of 3`.
 
-Embeddings are generated using Azure OpenAI and stored in Supabase PostgreSQL with pgvector.
+The system also uses the learner’s anonymous browser session ID to return them to the first unanswered question in a topic when they navigate away and return later.
 
-### 4. Scenario-Based Assessment Module
+### Gamified Progress Tracking
 
-The system includes a basic scenario-based assessment module for the five Cyber Essentials technical control themes.
+Progress is tracked at the question-attempt level. Each submitted answer creates an attempt record containing:
 
-The implemented workflow is:
+* Session ID
+* Topic ID
+* Question ID
+* Score
+* Maximum score
+* Timestamp
 
-```text
-User selects a technical control theme
-    ↓
-System loads a scenario-based question
-    ↓
-User submits an open-ended answer
-    ↓
-Backend retrieves relevant Cyber Essentials context
-    ↓
-AI compares the answer against a predefined rubric
-    ↓
-System returns score, strengths, missing points, feedback and sources
-```
+Progress is calculated using the best score achieved for each question, rather than only the most recent score. This prevents a later poor attempt from overwriting a previous stronger attempt.
 
-The assessment is formative only. It does not provide an official Cyber Essentials certification result.
+For each topic, the system calculates:
 
-### 5. Anonymous Progress Tracking
+* Knowledge score, such as `10/15`
+* Mastery percentage
+* XP
+* Badge level
 
-The system includes basic progress tracking using an anonymous browser-based session identifier.
+Current badge levels include:
 
-The progress dashboard currently records:
+* Not Started
+* Started
+* Bronze
+* Silver
+* Gold
+* Mastered
 
-- Completed technical control assessments
-- Latest assessment score
-- Maximum score
-- Basic badge status
+The left-side dashboard displays overall mastery, total XP, total knowledge score, attempted questions and badge counts.
 
-The prototype does not require user accounts or login.
+### Privacy and Usage Notice
 
-## System Architecture
+When users open the application, a modal notice explains that:
 
-The system follows a three-layer architecture:
+* The system is a learning prototype.
+* It is not an official certification platform.
+* Users should not enter real sensitive information.
+* Questions and assessment answers are processed to generate AI responses and feedback.
+* Raw chat transcripts and raw assessment answer text are not stored in the application database.
+* A random browser session ID is used to store limited progress metadata.
 
-```text
-React Frontend
-    ↓
-FastAPI Backend
-    ↓
-Azure OpenAI + Supabase PostgreSQL / pgvector
-```
+## Technology Stack
 
 ### Frontend
 
-The frontend is implemented using:
+* React
+* TypeScript
+* Vite
+* React Bootstrap
+* Browser localStorage for anonymous session ID storage
 
-- React
-- TypeScript
-- Vite
-- Bootstrap / React-Bootstrap
+The frontend is responsible for:
 
-Frontend responsibilities include:
-
-- Section navigation
-- PDF reading interface
-- AI tutor chat interface
-- Assessment interface
-- Progress dashboard
+* Rendering the three-column learning interface.
+* Displaying the Cyber Essentials PDF.
+* Managing AI Tutor and Assessment tabs.
+* Sending user questions and assessment answers to the backend.
+* Displaying formative feedback and retrieved sources.
+* Displaying gamified progress data.
 
 ### Backend
 
-The backend is implemented using:
+* Python
+* FastAPI
+* Pydantic
+* Supabase Python client
+* Azure OpenAI SDK
 
-- Python
-- FastAPI
-- Uvicorn
-- Pydantic
+The backend provides API routes for:
 
-Backend responsibilities include:
+* Health checks
+* AI tutor responses
+* Assessment question retrieval
+* Assessment answer submission
+* Progress tracking and gamification
 
-- API routing
-- Azure OpenAI chat and embedding calls
-- Supabase database access
-- RAG retrieval
-- Assessment feedback generation
-- Progress tracking
+### Database and Storage
+
+* Supabase PostgreSQL
+* Supabase RPC for vector similarity search
+* Document chunks stored in Supabase
+* Assessment questions and rubrics stored in relational tables
+* Assessment attempts stored for progress tracking
+
+Important tables include:
+
+* `assessment_questions`
+* `rubrics`
+* `assessment_attempts`
+* `progress_sessions`
+* document chunk tables used for retrieval
+
+The current progress system uses `assessment_attempts` as the main source of truth. The older `progress_sessions` table may still exist but is not the main basis for mastery calculation.
 
 ### AI Services
 
-The system uses Azure OpenAI:
+* Azure OpenAI chat deployment for AI tutor responses and assessment feedback
+* Azure OpenAI embedding deployment for retrieval queries
 
-- Chat deployment: `gpt-4o`
-- Embedding deployment: `text-embedding-3-large`
+The system uses retrieval-augmented generation. User questions and assessment answers are combined with relevant Cyber Essentials document chunks before being sent to the AI model.
 
-### Database
+### Deployment
 
-The database uses Supabase PostgreSQL with pgvector.
+* Frontend: Vercel
+* Backend: Render
+* Database: Supabase
+* Source control: GitHub
 
-Main database tables include:
+The frontend and backend can be connected to the GitHub repository so that pushes to the main branch trigger redeployment, depending on the deployment settings.
 
-- `topics`
-- `source_documents`
-- `document_chunks`
-- `assessment_questions`
-- `rubrics`
-- `progress_sessions`
+## System Architecture
 
-## Core API Endpoints
-
-### Health Check
+The system follows a client-server architecture.
 
 ```text
-GET /api/health
+User Browser
+   |
+   | React + TypeScript frontend
+   |
+FastAPI Backend
+   |
+   |-- Supabase PostgreSQL
+   |     |-- document chunks
+   |     |-- assessment questions
+   |     |-- rubrics
+   |     |-- assessment attempts
+   |
+   |-- Azure OpenAI
+         |-- embeddings
+         |-- AI tutor responses
+         |-- formative assessment feedback
 ```
 
-### Topics
+## Main Backend Modules
 
-```text
-GET /api/topics
+### `assessment.py`
+
+Handles assessment question loading and answer submission.
+
+Key responsibilities:
+
+* Retrieve active questions by topic.
+* Support next and previous question navigation.
+* Select the first unanswered question for a session.
+* Return question position and total number of questions.
+* Retrieve rubrics for submitted questions.
+* Retrieve relevant document context.
+* Generate formative AI feedback.
+
+### `progress.py`
+
+Handles gamified progress tracking.
+
+Key responsibilities:
+
+* Record assessment attempts.
+* Calculate best score per question.
+* Aggregate topic-level knowledge scores.
+* Calculate overall mastery.
+* Calculate XP.
+* Assign badges.
+* Return progress data to the frontend.
+
+### Azure OpenAI integration
+
+Handles:
+
+* Embedding generation.
+* Grounded AI tutor responses.
+* Structured formative assessment feedback.
+
+### Supabase client
+
+Creates the Supabase client using environment variables.
+
+## Environment Variables
+
+The backend requires environment variables such as:
+
+```env
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+
+AZURE_OPENAI_BASE_URL=
+AZURE_OPENAI_API_KEY=
+AZURE_OPENAI_CHAT_DEPLOYMENT=
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=
 ```
 
-### AI Test
+The frontend requires:
 
-```text
-POST /api/ai/test
+```env
+VITE_API_BASE_URL=
 ```
 
-### Retrieval Test
-
-```text
-POST /api/retrieval/test
-```
-
-### RAG Chat
-
-```text
-POST /api/chat
-```
-
-### Assessment
-
-```text
-GET  /api/assessment/question/{topic_id}
-POST /api/assessment/submit
-```
-
-### Progress
-
-```text
-GET  /api/progress/{session_id}
-POST /api/progress/update
-```
+Sensitive keys should not be committed to GitHub.
 
 ## Local Development
 
 ### Backend
 
-Activate the conda environment:
-
-```bash
-conda activate cyber-tutor
-```
-
-Start the backend from the project root:
+From the project root:
 
 ```bash
 python -m uvicorn main:app --reload --app-dir backend
 ```
 
-The backend should run at:
+The backend will usually run at:
 
 ```text
 http://localhost:8000
 ```
 
-The FastAPI documentation is available at:
-
-```text
-http://localhost:8000/docs
-```
-
 ### Frontend
 
-Install dependencies:
+From the frontend directory:
 
 ```bash
-npm --prefix frontend install
+cd frontend
+npm install
+npm run dev
 ```
 
-Start the frontend:
-
-```bash
-npm --prefix frontend run dev
-```
-
-The frontend should run at:
+The frontend will usually run at:
 
 ```text
 http://localhost:5173
 ```
 
-## Environment Variables
+### Frontend Build Test
 
-Real API keys must not be committed to GitHub.
-
-Create a local `.env` file in the project root based on `.env.example`.
-
-Required variables:
-
-```env
-AZURE_OPENAI_BASE_URL=
-AZURE_OPENAI_API_KEY=
-AZURE_OPENAI_CHAT_DEPLOYMENT=
-AZURE_OPENAI_EMBEDDING_DEPLOYMENT=
-
-SUPABASE_URL=
-SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_ANON_KEY=
-SUPABASE_PUBLISHABLE_KEY=
-
-FRONTEND_ORIGIN=http://localhost:5173
+```bash
+cd frontend
+npm run build
 ```
 
-The `SUPABASE_SERVICE_ROLE_KEY` must only be used by the backend. It must not be exposed in frontend code.
+## Example API Routes
 
-## Knowledge Base Construction
-
-The knowledge base builder is located at:
+### AI Tutor
 
 ```text
-backend/scripts/build_knowledge_base.py
+POST /api/chat
 ```
 
-It reads the Cyber Essentials PDF from a local source document folder, extracts curated sections, generates embeddings and inserts chunks into Supabase.
+### Load Assessment Question
 
-The source PDF is treated as a local development file and should not be committed unless explicitly required for deployment.
+```text
+GET /api/assessment/question/{topic_id}
+```
 
-## Privacy and Evaluation Design
+Supports query parameters such as:
 
-The prototype does not require login or named user accounts.
+```text
+session_id
+exclude_question_id
+previous_question_id
+```
 
-Progress is tracked using an anonymous browser session identifier stored in local browser storage. The system is designed to avoid collecting unnecessary personal or organisational data during evaluation.
+### Submit Assessment Answer
 
-The prototype should not collect:
+```text
+POST /api/assessment/submit
+```
 
-- Names
-- Email addresses
-- Company names
-- Real infrastructure details
-- Credentials
-- Confidential system configurations
-- Identifiable user profiles
+### Get Progress
 
-Research evaluation data should be collected separately through an anonymous questionnaire.
+```text
+GET /api/progress/{session_id}
+```
 
-## Academic Scope
+### Update Progress
 
-This project is a dissertation prototype. Its purpose is to explore how AI tutoring, retrieval-augmented generation, formative assessment and lightweight progress tracking can support Cyber Essentials learning.
+```text
+POST /api/progress/update
+```
 
-The system is not intended to replace official Cyber Essentials documentation, certification assessment, or professional cybersecurity advice.
+## Current Functional Scope
 
-## Current Development Stage
+The current prototype supports:
 
-The core local prototype is implemented.
+1. Cyber Essentials PDF navigation.
+2. AI tutoring grounded in retrieved Cyber Essentials content.
+3. Open-ended formative assessment.
+4. Rubric-based AI feedback.
+5. Multiple questions per technical control topic.
+6. Retry, previous and next question navigation.
+7. Session-aware loading of unanswered questions.
+8. Question numbering.
+9. Question-level attempt recording.
+10. Best-score-based progress calculation.
+11. Knowledge score display.
+12. XP and badge-based gamification.
+13. Anonymous browser session tracking.
+14. Privacy and usage warning modal.
 
-Remaining work includes:
+## Limitations
 
-- Interface polishing
-- Deployment preparation
-- User evaluation preparation
-- Dissertation system design documentation
-- Testing and limitation analysis
+This system is a prototype and has several limitations:
+
+* It does not make official Cyber Essentials certification decisions.
+* It does not replace a Certification Body.
+* It does not collect or verify real organisational evidence.
+* It does not perform vulnerability scanning or technical auditing.
+* AI feedback is formative and may require human review.
+* The assessment module is designed for learning, not compliance approval.
+* The current assessment structure focuses on the five Cyber Essentials technical control themes.
+
+## Educational Positioning
+
+The system is designed to support cybersecurity compliance education by combining:
+
+* Authoritative document-based learning
+* Retrieval-augmented AI tutoring
+* Open-ended scenario-based assessment
+* Formative feedback
+* Lightweight gamification
+
+The goal is to help learners understand and apply Cyber Essentials concepts in context, while maintaining a clear boundary between educational support and official certification.
