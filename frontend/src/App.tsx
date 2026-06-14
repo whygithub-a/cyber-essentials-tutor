@@ -526,10 +526,12 @@ function App() {
   };
 
   useEffect(() => {
-    const activeSessionId = getOrCreateSessionId();
-    setSessionId(activeSessionId);
-    loadProgress(activeSessionId);
-  }, []);
+  if (showIntroModal) return;
+
+  const activeSessionId = getOrCreateSessionId();
+  setSessionId(activeSessionId);
+  loadProgress(activeSessionId);
+}, [showIntroModal]);
 
   return (
     <div
@@ -1290,10 +1292,10 @@ function App() {
             <section>
               <h6>How your inputs are used</h6>
               <p className="small mb-0">
-                Your questions and assessment answers are processed to generate
-                AI tutor responses and formative feedback. Raw chat transcripts
-                and raw assessment answer text are not stored in the application
-                database.
+                Your questions and assessment answers are processed by the backend
+                and Azure OpenAI to generate AI tutor responses and formative feedback. 
+                Raw chat transcripts and raw assessment answer text are not stored 
+                in the application database.
               </p>
             </section>
 
