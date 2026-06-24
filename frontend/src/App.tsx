@@ -160,6 +160,35 @@ type ProgressResponse = {
   progress: ProgressItem[];
 };
 
+type WeaknessItem = {
+  topic_id: string;
+  topic_label: string;
+  question_id: string;
+  question_text: string;
+  question_position: number;
+  total_questions: number;
+  score: number;
+  max_score: number;
+  mastery_percentage: number;
+  missing_points: string[];
+  created_at: string | null;
+};
+
+type WeaknessTopicGroup = {
+  topic_id: string;
+  topic_label: string;
+  weak_question_count: number;
+  missing_point_count: number;
+  weaknesses: WeaknessItem[];
+};
+
+type WeaknessSummaryResponse = {
+  session_id: string;
+  total_weak_questions: number;
+  total_missing_points: number;
+  weaknesses: WeaknessTopicGroup[];
+};
+
 const DEFAULT_BADGE_COUNTS: BadgeCounts = {
   mastered: 0,
   gold: 0,
@@ -206,6 +235,10 @@ function shouldUseDarkBadgeText(badge: string | null): boolean {
   return badge === "gold" || badge === "silver" || badge === "not_started";
 }
 
+function getSectionByTopicId(topicId: string): LearningSection | undefined {
+  return LEARNING_SECTIONS.find((section) => section.topicId === topicId);
+}
+
 function App() {
   const [showIntroModal, setShowIntroModal] = useState(true);
 
@@ -236,6 +269,11 @@ function App() {
     useState<BadgeCounts>(DEFAULT_BADGE_COUNTS);
   const [loadingProgress, setLoadingProgress] = useState(false);
   const [progressError, setProgressError] = useState("");
+
+  const [weaknessSummary, setWeaknessSummary] =
+    useState<WeaknessSummaryResponse | null>(null);
+  const [loadingWeaknesses, setLoadingWeaknesses] = useState(false);
+  const [weaknessError, setWeaknessError] = useState("");
 
   const pdfUrl = `${PDF_PATH}#page=${selectedSection.page}&zoom=60`;
 
@@ -292,11 +330,39 @@ function App() {
     }
   };
 
+  const loadWeaknesses = async (activeSessionId: string) => {
+    if (!activeSessionId) return;
+
+    setLoadingWeaknesses(true);
+    setWeaknessError("");
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/progress/weaknesses/${activeSessionId}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Weak points endpoint returned ${response.status}`);
+      }
+
+      const data: WeaknessSummaryResponse = await response.json();
+      setWeaknessSummary(data);
+    } catch (err) {
+      setWeaknessError(
+        err instanceof Error ? err.message : "Failed to load weak points"
+      );
+    } finally {
+      setLoadingWeaknesses(false);
+    }
+  };
+
   const updateProgress = async (
     topicId: string,
     questionId: string,
     latestScore: number,
-    maxScore: number
+    maxScore: number,
+    missingPoints: string[],
+    strengths: string[]
   ) => {
     const activeSessionId = sessionId || getOrCreateSessionId();
 
@@ -317,6 +383,8 @@ function App() {
           completed: true,
           latest_score: latestScore,
           max_score: maxScore,
+          missing_points: missingPoints,
+          strengths: strengths,
         }),
       });
 
@@ -325,6 +393,7 @@ function App() {
       }
 
       await loadProgress(activeSessionId);
+      await loadWeaknesses(activeSessionId);
     } catch (err) {
       setProgressError(
         err instanceof Error ? err.message : "Failed to update progress"
@@ -489,7 +558,9 @@ function App() {
           selectedSection.topicId,
           assessmentQuestion.id,
           data.score,
-          data.max_score
+          data.max_score,
+          data.missing_points ?? [],
+          data.strengths ?? []
         );
       }
     } catch (err) {
@@ -525,13 +596,22 @@ function App() {
     setAssessmentError("");
   };
 
-  useEffect(() => {
-  if (showIntroModal) return;
+  const reviewWeakTopic = (topicId: string) => {
+    const section = getSectionByTopicId(topicId);
 
-  const activeSessionId = getOrCreateSessionId();
-  setSessionId(activeSessionId);
-  loadProgress(activeSessionId);
-}, [showIntroModal]);
+    if (!section) return;
+
+    selectSection(section);
+  };
+
+  useEffect(() => {
+    if (showIntroModal) return;
+
+    const activeSessionId = getOrCreateSessionId();
+    setSessionId(activeSessionId);
+    loadProgress(activeSessionId);
+    loadWeaknesses(activeSessionId);
+  }, [showIntroModal]);
 
   return (
     <div
@@ -1254,6 +1334,198 @@ function App() {
                     )}
                   </div>
                 </Tab>
+
+                <Tab eventKey="weak-points" title="Weak Points">
+                  <div
+                    style={{
+                      height: "calc(100vh - 190px)",
+                      overflowY: "auto",
+                      paddingRight: "4px",
+                    }}
+                  >
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <div>
+                        <h6 className="mb-0">Weak Points Summary</h6>
+                        <small className="text-muted">
+                          Missing rubric points from your current best attempts.
+                        </small>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        variant="outline-secondary"
+                        onClick={() => loadWeaknesses(sessionId)}
+                        disabled={!sessionId || loadingWeaknesses}
+                        style={{
+                          fontSize: "0.72rem",
+                          padding: "4px 7px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Refresh
+                      </Button>
+                    </div>
+
+                    {loadingWeaknesses && (
+                      <Alert variant="info" className="small">
+                        <Spinner
+                          animation="border"
+                          size="sm"
+                          className="me-2"
+                        />
+                        Loading weak points...
+                      </Alert>
+                    )}
+
+                    {weaknessError && (
+                      <Alert variant="danger" className="small">
+                        {weaknessError}
+                      </Alert>
+                    )}
+
+                    {!loadingWeaknesses &&
+                      weaknessSummary &&
+                      weaknessSummary.total_weak_questions === 0 && (
+                        <Alert variant="success" className="small">
+                          <strong>No weak points identified yet.</strong>
+                          <p className="mb-0 mt-2">
+                            Your current best attempts do not show missing
+                            rubric points. If you have not completed many
+                            questions yet, more information will appear after
+                            further assessment attempts.
+                          </p>
+                        </Alert>
+                      )}
+
+                    {!loadingWeaknesses &&
+                      weaknessSummary &&
+                      weaknessSummary.total_weak_questions > 0 && (
+                        <>
+                          <Alert variant="warning" className="small">
+                            <strong>
+                              {weaknessSummary.total_weak_questions} weak
+                              question
+                              {weaknessSummary.total_weak_questions === 1
+                                ? ""
+                                : "s"}{" "}
+                              identified
+                            </strong>
+                            <p className="mb-0 mt-2">
+                              Total missing points:{" "}
+                              {weaknessSummary.total_missing_points}
+                            </p>
+                          </Alert>
+
+                          {weaknessSummary.weaknesses.map((group) => (
+                            <Card
+                              key={group.topic_id}
+                              className="mb-3 border-0 shadow-sm"
+                            >
+                              <Card.Body className="p-3">
+                                <div className="d-flex justify-content-between align-items-start mb-2">
+                                  <div>
+                                    <h6 className="mb-1">
+                                      {group.topic_label}
+                                    </h6>
+                                    <small className="text-muted">
+                                      {group.weak_question_count} weak question
+                                      {group.weak_question_count === 1
+                                        ? ""
+                                        : "s"}{" "}
+                                      · {group.missing_point_count} missing point
+                                      {group.missing_point_count === 1
+                                        ? ""
+                                        : "s"}
+                                    </small>
+                                  </div>
+
+                                  <Button
+                                    size="sm"
+                                    variant="outline-primary"
+                                    onClick={() =>
+                                      reviewWeakTopic(group.topic_id)
+                                    }
+                                    style={{
+                                      fontSize: "0.72rem",
+                                      padding: "4px 7px",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    Review Topic
+                                  </Button>
+                                </div>
+
+                                {group.weaknesses.map((item) => (
+                                  <div
+                                    key={item.question_id}
+                                    style={{
+                                      borderTop: "1px solid #e6e9ef",
+                                      paddingTop: "10px",
+                                      marginTop: "10px",
+                                    }}
+                                  >
+                                    <div className="d-flex justify-content-between align-items-center mb-2">
+                                      <Badge bg="secondary">
+                                        Question {item.question_position} of{" "}
+                                        {item.total_questions}
+                                      </Badge>
+
+                                      <Badge
+                                        bg={
+                                          item.mastery_percentage >= 70
+                                            ? "info"
+                                            : item.mastery_percentage >= 50
+                                            ? "primary"
+                                            : "warning"
+                                        }
+                                        text={
+                                          item.mastery_percentage < 50
+                                            ? "dark"
+                                            : undefined
+                                        }
+                                      >
+                                        Best score: {item.score}/{item.max_score}
+                                      </Badge>
+                                    </div>
+
+                                    <p className="small mb-2">
+                                      <strong>Question:</strong>{" "}
+                                      {item.question_text}
+                                    </p>
+
+                                    <Alert
+                                      variant="warning"
+                                      className="small mb-0"
+                                    >
+                                      <strong>Missing points to review</strong>
+                                      <ul className="mb-0 mt-2">
+                                        {item.missing_points.map(
+                                          (point, index) => (
+                                            <li
+                                              key={`${item.question_id}-${index}`}
+                                            >
+                                              {point}
+                                            </li>
+                                          )
+                                        )}
+                                      </ul>
+                                    </Alert>
+                                  </div>
+                                ))}
+                              </Card.Body>
+                            </Card>
+                          ))}
+                        </>
+                      )}
+
+                    {!loadingWeaknesses && !weaknessSummary && (
+                      <Alert variant="secondary" className="small">
+                        Weak points will appear here after you submit assessment
+                        answers.
+                      </Alert>
+                    )}
+                  </div>
+                </Tab>
               </Tabs>
             </Card.Body>
           </Card>
@@ -1292,10 +1564,10 @@ function App() {
             <section>
               <h6>How your inputs are used</h6>
               <p className="small mb-0">
-                Your questions and assessment answers are processed by the backend
-                and Azure OpenAI to generate AI tutor responses and formative feedback. 
-                Raw chat transcripts and raw assessment answer text are not stored 
-                in the application database.
+                Your questions and assessment answers are processed by the
+                backend and Azure OpenAI to generate AI tutor responses and
+                formative feedback. Raw chat transcripts and raw assessment
+                answer text are not stored in the application database.
               </p>
             </section>
 

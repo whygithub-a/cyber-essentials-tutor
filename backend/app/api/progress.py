@@ -1,7 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.supabase_client import supabase
 
@@ -16,6 +16,14 @@ TOPIC_ORDER = [
     "malware_protection",
 ]
 
+TOPIC_LABELS = {
+    "firewalls": "Firewalls",
+    "secure_configuration": "Secure Configuration",
+    "security_update_management": "Security Update Management",
+    "user_access_control": "User Access Control",
+    "malware_protection": "Malware Protection",
+}
+
 XP_PER_QUESTION = 20
 
 
@@ -26,6 +34,8 @@ class ProgressUpdateRequest(BaseModel):
     completed: bool = True
     latest_score: int
     max_score: int
+    missing_points: list[str] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list)
 
 
 class ProgressItem(BaseModel):
@@ -50,6 +60,35 @@ class ProgressResponse(BaseModel):
     progress: list[ProgressItem]
 
 
+class WeaknessItem(BaseModel):
+    topic_id: str
+    topic_label: str
+    question_id: str
+    question_text: str
+    question_position: int
+    total_questions: int
+    score: int
+    max_score: int
+    mastery_percentage: int
+    missing_points: list[str]
+    created_at: Optional[str] = None
+
+
+class WeaknessTopicGroup(BaseModel):
+    topic_id: str
+    topic_label: str
+    weak_question_count: int
+    missing_point_count: int
+    weaknesses: list[WeaknessItem]
+
+
+class WeaknessSummaryResponse(BaseModel):
+    session_id: str
+    total_weak_questions: int
+    total_missing_points: int
+    weaknesses: list[WeaknessTopicGroup]
+
+
 def safe_int(value, default: int = 0) -> int:
     try:
         if value is None:
@@ -59,11 +98,41 @@ def safe_int(value, default: int = 0) -> int:
         return default
 
 
+def safe_list(value) -> list[str]:
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        result: list[str] = []
+
+        for item in value:
+            if item is None:
+                continue
+
+            text = str(item).strip()
+
+            if text:
+                result.append(text)
+
+        return result
+
+    text = str(value).strip()
+
+    if not text:
+        return []
+
+    return [text]
+
+
 def topic_sort_key(topic_id: str) -> tuple[int, str]:
     if topic_id in TOPIC_ORDER:
         return TOPIC_ORDER.index(topic_id), topic_id
 
     return len(TOPIC_ORDER), topic_id
+
+
+def get_topic_label(topic_id: str) -> str:
+    return TOPIC_LABELS.get(topic_id, topic_id.replace("_", " ").title())
 
 
 def calculate_badge(
@@ -92,7 +161,7 @@ def calculate_badge(
 def get_active_questions() -> list[dict]:
     response = (
         supabase.table("assessment_questions")
-        .select("id, topic_id, question_order")
+        .select("id, topic_id, question_text, question_order")
         .eq("is_active", True)
         .execute()
     )
@@ -122,7 +191,10 @@ def get_rubric_max_scores() -> dict[str, int]:
 def get_attempts_for_session(session_id: str) -> list[dict]:
     response = (
         supabase.table("assessment_attempts")
-        .select("question_id, topic_id, score, max_score, created_at")
+        .select(
+            "question_id, topic_id, score, max_score, "
+            "missing_points, strengths, created_at"
+        )
         .eq("session_id", session_id)
         .execute()
     )
@@ -156,24 +228,37 @@ def get_best_attempts_by_question(
         score = max(0, min(score, max_score))
         ratio = score / max_score
 
+        created_at = attempt.get("created_at")
         existing_best = best_attempts.get(question_id)
 
-        if existing_best is None or ratio > existing_best["ratio"]:
+        should_replace = False
+
+        if existing_best is None:
+            should_replace = True
+        elif ratio > existing_best["ratio"]:
+            should_replace = True
+        elif ratio == existing_best["ratio"]:
+            existing_created_at = existing_best.get("created_at")
+
+            if created_at and (
+                existing_created_at is None or created_at > existing_created_at
+            ):
+                should_replace = True
+
+        if should_replace:
             best_attempts[question_id] = {
                 "score": score,
                 "max_score": max_score,
                 "ratio": ratio,
-                "created_at": attempt.get("created_at"),
+                "missing_points": safe_list(attempt.get("missing_points")),
+                "strengths": safe_list(attempt.get("strengths")),
+                "created_at": created_at,
             }
 
     return best_attempts
 
 
-def build_progress_summary(session_id: str) -> ProgressResponse:
-    active_questions = get_active_questions()
-    rubric_max_scores = get_rubric_max_scores()
-    attempts = get_attempts_for_session(session_id)
-
+def build_questions_by_topic(active_questions: list[dict]) -> dict[str, list[dict]]:
     questions_by_topic: dict[str, list[dict]] = {}
 
     for question in active_questions:
@@ -200,6 +285,16 @@ def build_progress_summary(session_id: str) -> ProgressResponse:
                 str(item.get("id")),
             )
         )
+
+    return questions_by_topic
+
+
+def build_progress_summary(session_id: str) -> ProgressResponse:
+    active_questions = get_active_questions()
+    rubric_max_scores = get_rubric_max_scores()
+    attempts = get_attempts_for_session(session_id)
+
+    questions_by_topic = build_questions_by_topic(active_questions)
 
     active_question_ids = {
         str(question.get("id"))
@@ -311,6 +406,100 @@ def build_progress_summary(session_id: str) -> ProgressResponse:
     )
 
 
+def build_weakness_summary(session_id: str) -> WeaknessSummaryResponse:
+    active_questions = get_active_questions()
+    rubric_max_scores = get_rubric_max_scores()
+    attempts = get_attempts_for_session(session_id)
+
+    questions_by_topic = build_questions_by_topic(active_questions)
+
+    active_question_ids = {
+        str(question.get("id"))
+        for question in active_questions
+        if question.get("id")
+    }
+
+    best_attempts = get_best_attempts_by_question(
+        attempts=attempts,
+        active_question_ids=active_question_ids,
+    )
+
+    topic_groups: list[WeaknessTopicGroup] = []
+
+    for topic_id in sorted(questions_by_topic.keys(), key=topic_sort_key):
+        topic_questions = questions_by_topic[topic_id]
+        topic_label = get_topic_label(topic_id)
+        total_questions = len(topic_questions)
+
+        weakness_items: list[WeaknessItem] = []
+
+        for index, question in enumerate(topic_questions):
+            question_id = str(question.get("id"))
+            question_text = str(question.get("question_text") or "")
+            question_max_score = rubric_max_scores.get(question_id, 5)
+            best_attempt = best_attempts.get(question_id)
+
+            if not best_attempt:
+                continue
+
+            score = safe_int(best_attempt.get("score"), 0)
+            max_score = safe_int(best_attempt.get("max_score"), question_max_score)
+
+            if max_score <= 0:
+                continue
+
+            if score >= max_score:
+                continue
+
+            missing_points = safe_list(best_attempt.get("missing_points"))
+
+            if not missing_points:
+                missing_points = [
+                    "This question has a non-perfect best score, but no missing point details were stored for the selected attempt."
+                ]
+
+            mastery_percentage = round((score / max_score) * 100)
+
+            weakness_items.append(
+                WeaknessItem(
+                    topic_id=topic_id,
+                    topic_label=topic_label,
+                    question_id=question_id,
+                    question_text=question_text,
+                    question_position=index + 1,
+                    total_questions=total_questions,
+                    score=score,
+                    max_score=max_score,
+                    mastery_percentage=mastery_percentage,
+                    missing_points=missing_points,
+                    created_at=best_attempt.get("created_at"),
+                )
+            )
+
+        if weakness_items:
+            topic_groups.append(
+                WeaknessTopicGroup(
+                    topic_id=topic_id,
+                    topic_label=topic_label,
+                    weak_question_count=len(weakness_items),
+                    missing_point_count=sum(
+                        len(item.missing_points) for item in weakness_items
+                    ),
+                    weaknesses=weakness_items,
+                )
+            )
+
+    total_weak_questions = sum(group.weak_question_count for group in topic_groups)
+    total_missing_points = sum(group.missing_point_count for group in topic_groups)
+
+    return WeaknessSummaryResponse(
+        session_id=session_id,
+        total_weak_questions=total_weak_questions,
+        total_missing_points=total_missing_points,
+        weaknesses=topic_groups,
+    )
+
+
 def validate_question_topic(question_id: str, topic_id: str) -> None:
     response = (
         supabase.table("assessment_questions")
@@ -350,6 +539,8 @@ def record_assessment_attempt(request: ProgressUpdateRequest) -> None:
         "question_id": request.question_id,
         "score": score,
         "max_score": request.max_score,
+        "missing_points": request.missing_points,
+        "strengths": request.strengths,
     }
 
     response = (
@@ -360,6 +551,17 @@ def record_assessment_attempt(request: ProgressUpdateRequest) -> None:
 
     if not response.data:
         raise HTTPException(status_code=500, detail="Assessment attempt insert failed")
+
+
+@router.get("/weaknesses/{session_id}", response_model=WeaknessSummaryResponse)
+def get_weaknesses(session_id: str):
+    try:
+        return build_weakness_summary(session_id)
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/{session_id}", response_model=ProgressResponse)
