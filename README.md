@@ -1,6 +1,6 @@
 # Cyber Essentials Intelligent Tutoring System
 
-This project is a web-based intelligent tutoring prototype designed to support learning of the Cyber Essentials requirements. It combines document-based learning, retrieval-augmented AI tutoring, open-ended formative assessment, and lightweight gamified progress tracking.
+This project is a web-based intelligent tutoring prototype designed to support learning and preparation around the Cyber Essentials requirements. It combines PDF-based learning, retrieval-augmented AI tutoring, open-ended formative assessment, personalised weak-points review, lightweight gamified progress tracking, and a shortened SME-oriented readiness consultation feature.
 
 The system is intended for educational and formative preparation use only. It is not an official Cyber Essentials certification platform, does not replace a Certification Body, and does not make official compliance decisions.
 
@@ -13,6 +13,8 @@ The prototype helps users study Cyber Essentials by providing:
 * Open-ended scenario-based formative assessment questions.
 * AI-generated assessment feedback based on rubrics and retrieved source material.
 * Question-level progress tracking.
+* A personalised weak-points summary based on missing rubric points.
+* A shortened Cyber Essentials readiness consultation workflow for small organisations.
 * Gamified progress indicators, including mastery percentage, XP and badges.
 * A privacy and usage notice shown when the user opens the application.
 
@@ -95,6 +97,58 @@ The assessment interface supports:
 
 The system also uses the learner’s anonymous browser session ID to return them to the first unanswered question in a topic when they navigate away and return later.
 
+### Weak Points Summary
+
+The system includes a dedicated `Weak Points` tab that summarises the learner’s current weak areas across the assessment topics.
+
+After each assessment submission, the system stores the score, strengths and missing rubric points. The Weak Points Summary uses the learner’s best attempt for each question. If a question’s best attempt is not full marks, the missing points from that best attempt are included in the summary. If the learner later retries the question and achieves full marks, that question is removed from the weak points list.
+
+The Weak Points Summary displays:
+
+* Topic name
+* Question number
+* Best score
+* Missing rubric points to review
+* A topic review button
+
+This feature helps learners identify recurring gaps across the system instead of only seeing feedback for one question at a time.
+
+### Consultation
+
+The system includes a `Consultation` tab that provides a shortened Cyber Essentials readiness consultation workflow for small organisations.
+
+This feature is designed for users such as small business founders or non-specialist administrators who want to understand possible Cyber Essentials readiness gaps before seeking official certification or professional consultancy support.
+
+The consultation feature is based on a shortened set of core readiness questions covering:
+
+* Organisation and scope
+* Devices and cloud services
+* Firewalls
+* Secure Configuration
+* Security Update Management
+* User Access Control
+* Malware Protection
+
+The workflow asks 15 lightweight questions instead of reproducing the full official self-assessment questionnaire. This is intentional: the goal is to provide formative readiness guidance, not to duplicate the official Cyber Essentials assessment process.
+
+After the user submits the consultation form, the system generates a readiness report containing:
+
+* Overall readiness level
+* Short readiness summary
+* Likely strengths
+* Potential gaps
+* Severity level for each gap
+* Why each issue matters
+* Recommended actions
+* Recommended next steps
+* Retrieved sources used
+
+The report may also include clarification questions. These questions are generated once from the initial consultation result. Users can answer one or more clarification questions, and the system regenerates the report using the additional information. Answered clarification questions are then removed from the list, preventing an endless question loop.
+
+The consultation feature does not save the user’s raw consultation input to the application database. The report is generated temporarily in the browser session and is intended only as formative readiness guidance.
+
+The consultation feature does not use Cyber Essentials Plus test specifications and does not perform technical testing, auditing, scanning or formal pass/fail assessment.
+
 ### Gamified Progress Tracking
 
 Progress is tracked at the question-attempt level. Each submitted assessment answer creates an attempt record containing:
@@ -142,10 +196,13 @@ The frontend is responsible for:
 
 * Rendering the three-column learning interface.
 * Displaying the Cyber Essentials PDF.
-* Managing AI Tutor and Assessment tabs.
+* Managing the AI Tutor, Assessment, Weak Points and Consultation tabs.
+* Displaying the prototype notice modal.
 * Sending user questions and assessment answers to the backend.
 * Displaying formative feedback and retrieved sources.
 * Displaying gamified progress data.
+* Displaying weak points derived from missing rubric points.
+* Rendering the shortened consultation form and readiness report.
 
 ### Backend
 
@@ -162,6 +219,8 @@ The backend provides API routes for:
 * Assessment question retrieval
 * Assessment answer submission
 * Progress tracking and gamification
+* Weak points summary generation
+* Consultation readiness analysis
 
 ### Database and Storage
 
@@ -169,7 +228,7 @@ The backend provides API routes for:
 * Supabase RPC for vector similarity search
 * Document chunks stored in Supabase
 * Assessment questions and rubrics stored in relational tables
-* Assessment attempts stored for progress tracking
+* Assessment attempts stored for progress and weak-points tracking
 
 Important tables include:
 
@@ -179,7 +238,9 @@ Important tables include:
 * `progress_sessions`
 * document chunk tables used for retrieval
 
-The current progress system uses `assessment_attempts` as the main source of truth. The older `progress_sessions` table may still exist but is not the main basis for mastery calculation.
+The current progress and weak-points systems use `assessment_attempts` as the main source of truth. The older `progress_sessions` table may still exist but is not the main basis for mastery calculation.
+
+The consultation feature does not require a new database table in the current implementation because raw consultation input is not stored.
 
 ### AI Services
 
@@ -195,7 +256,7 @@ The system uses retrieval-augmented generation. User questions, assessment answe
 * Database: Supabase
 * Source control: GitHub
 
-The frontend and backend can be connected to the GitHub repository so that pushes to the main branch trigger redeployment, depending on the deployment platform settings.
+The frontend and backend can be connected to the GitHub repository so that pushes to the main branch trigger redeployment, depending on the deployment settings.
 
 ## System Architecture
 
@@ -250,7 +311,7 @@ Key responsibilities:
 
 ### `progress.py`
 
-Handles gamified progress tracking.
+Handles gamified progress tracking and weak-points summary generation.
 
 Key responsibilities:
 
@@ -261,7 +322,25 @@ Key responsibilities:
 * Calculate overall mastery.
 * Calculate XP.
 * Assign badges.
-* Return progress data to the frontend.
+* Identify weak questions from best attempts that are not full marks.
+* Return a personalised weak-points summary.
+
+### `consultation.py`
+
+Handles shortened Cyber Essentials readiness consultation analysis.
+
+Key responsibilities:
+
+* Receive structured consultation answers.
+* Evaluate potential readiness gaps using rule-based logic.
+* Generate likely strengths and potential gaps.
+* Generate a readiness level.
+* Retrieve relevant Cyber Essentials document chunks.
+* Use Azure OpenAI to generate a concise readiness summary.
+* Return clarification questions for the initial report.
+* Support report regeneration when users provide clarification details.
+
+The consultation module is designed to provide formative readiness guidance only. It does not make certification decisions and does not perform technical auditing.
 
 ### Azure OpenAI Integration
 
@@ -275,6 +354,60 @@ Handles:
 ### Supabase Client
 
 Creates the Supabase client using environment variables.
+
+## Database Structure
+
+### `assessment_questions`
+
+Stores the open-ended assessment questions.
+
+Important fields include:
+
+```text
+id
+topic_id
+question_text
+scenario_context
+difficulty
+is_active
+question_order
+official_ref
+source_title
+adaptation_note
+```
+
+### `rubrics`
+
+Stores the expected marking points for each assessment question.
+
+Important fields include:
+
+```text
+id
+question_id
+max_score
+expected_points
+```
+
+### `assessment_attempts`
+
+Stores question-level assessment attempts.
+
+Important fields include:
+
+```text
+id
+session_id
+topic_id
+question_id
+score
+max_score
+missing_points
+strengths
+created_at
+```
+
+This table is used for both progress calculation and weak-points summary generation.
 
 ## Environment Variables
 
@@ -392,45 +525,8 @@ POST /api/progress/update
 GET /api/progress/weaknesses/{session_id}
 ```
 
-## Current Functional Scope
+### Generate Consultation Summary
 
-The current prototype supports:
-
-1. Cyber Essentials PDF navigation.
-2. AI tutoring grounded in retrieved Cyber Essentials content.
-3. Open-ended formative assessment.
-4. Rubric-based AI feedback.
-5. Multiple questions per technical control topic.
-6. Retry, previous and next question navigation.
-7. Session-aware loading of unanswered questions.
-8. Question numbering.
-9. Question-level attempt recording.
-10. Best-score-based progress calculation.
-11. Knowledge score display.
-12. XP and badge-based gamification.
-13. Anonymous browser session tracking.
-14. Privacy and usage warning modal.
-
-## Limitations
-
-This system is a prototype and has several limitations:
-
-* It does not make official Cyber Essentials certification decisions.
-* It does not replace a Certification Body.
-* It does not collect or verify real organisational evidence.
-* It does not perform vulnerability scanning or technical auditing.
-* AI feedback is formative and may require human review.
-* The assessment module is designed for learning, not compliance approval.
-* The current assessment structure focuses on the five Cyber Essentials technical control themes.
-
-## Educational Positioning
-
-The system is designed to support cybersecurity compliance education by combining:
-
-* Authoritative document-based learning
-* Retrieval-augmented AI tutoring
-* Open-ended scenario-based assessment
-* Formative feedback
-* Lightweight gamification
-
-The goal is to help learners understand and apply Cyber Essentials concepts in context, while maintaining a clear boundary between educational support and official certification.
+```text
+POST /api/consultation/analyse
+```
