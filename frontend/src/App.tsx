@@ -12,6 +12,7 @@ import {
   Tab,
   Tabs,
 } from "react-bootstrap";
+import ConsultationTab from "./components/ConsultationTab";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -1525,6 +1526,9 @@ function App() {
                       </Alert>
                     )}
                   </div>
+                </Tab>
+                <Tab eventKey="consultation" title="Consultation">
+                  <ConsultationTab apiBaseUrl={API_BASE_URL} sessionId={sessionId} />
                 </Tab>
               </Tabs>
             </Card.Body>

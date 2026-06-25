@@ -10,6 +10,7 @@ from app.api.retrieval import router as retrieval_router
 from app.api.chat import router as chat_router
 from app.api.assessment import router as assessment_router
 from app.api.progress import router as progress_router
+from app.api.consultation import router as consultation_router
 
 load_dotenv()
 
@@ -42,7 +43,7 @@ app.include_router(retrieval_router)
 app.include_router(chat_router)
 app.include_router(assessment_router)
 app.include_router(progress_router)
-
+app.include_router(consultation_router)
 
 @app.get("/")
 def root():
