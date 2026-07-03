@@ -386,14 +386,6 @@ function toggleListValue(
   setValues([...currentValues, value]);
 }
 
-function formatCurrentAnswer(value: string | string[]): string {
-  if (Array.isArray(value)) {
-    return value.length > 0 ? value.join(", ") : "No option selected yet.";
-  }
-
-  return value.trim() ? value : "No answer entered yet.";
-}
-
 function ConsultationTab({ apiBaseUrl, sessionId }: ConsultationTabProps) {
   const reportContainerRef = useRef<HTMLDivElement | null>(null);
   const helpMessagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -898,42 +890,6 @@ function ConsultationTab({ apiBaseUrl, sessionId }: ConsultationTabProps) {
     setConsultationError("");
     setReportVersion(1);
     setReportUpdateMessage("");
-  };
-
-  const getCurrentAnswerForHelp = (helpId: string): string => {
-    const clarificationQuestion = getClarificationQuestionFromHelpId(helpId);
-
-    if (clarificationQuestion) {
-      return formatCurrentAnswer(clarificationAnswers[clarificationQuestion] ?? "");
-    }
-
-    if (helpId === "organisation_size") return formatCurrentAnswer(organisationSize);
-    if (helpId === "it_management") return formatCurrentAnswer(itManagement);
-    if (helpId === "devices") return formatCurrentAnswer(devices);
-    if (helpId === "cloud_services") return formatCurrentAnswer(cloudServices);
-    if (helpId === "firewall_protection")
-      return formatCurrentAnswer(firewallProtection);
-    if (helpId === "firewall_passwords_rules")
-      return formatCurrentAnswer(firewallPasswordsRules);
-    if (helpId === "unnecessary_software_accounts")
-      return formatCurrentAnswer(unnecessarySoftwareAccounts);
-    if (helpId === "device_locking") return formatCurrentAnswer(deviceLocking);
-    if (helpId === "supported_software")
-      return formatCurrentAnswer(supportedSoftware);
-    if (helpId === "critical_updates_14_days")
-      return formatCurrentAnswer(criticalUpdates14Days);
-    if (helpId === "unique_accounts") return formatCurrentAnswer(uniqueAccounts);
-    if (helpId === "admin_account_separation")
-      return formatCurrentAnswer(adminAccountSeparation);
-    if (helpId === "cloud_mfa") return formatCurrentAnswer(cloudMfa);
-    if (helpId === "malware_protection")
-      return formatCurrentAnswer(malwareProtection);
-    if (helpId === "malware_updated_blocking")
-      return formatCurrentAnswer(malwareUpdatedBlocking);
-    if (helpId === "additional_context")
-      return formatCurrentAnswer(additionalContext);
-
-    return "No answer available.";
   };
 
   const openHelpModal = (helpId: string) => {
