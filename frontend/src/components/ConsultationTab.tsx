@@ -1017,7 +1017,7 @@ function ConsultationTab({ apiBaseUrl, sessionId }: ConsultationTabProps) {
             ]
               .filter(Boolean)
               .join("\n"),
-            current_answer: getCurrentAnswerForHelp(activeHelpId),
+            current_answer: "",
             user_follow_up: userQuestion,
             recent_messages: previousMessages.slice(-8),
           }),
@@ -1106,10 +1106,6 @@ function ConsultationTab({ apiBaseUrl, sessionId }: ConsultationTabProps) {
               </Card.Body>
             </Card>
 
-            <Alert variant="light" className="small">
-              <strong>Your current answer:</strong>{" "}
-              {getCurrentAnswerForHelp(activeHelpId)}
-            </Alert>
 
             <div className="d-flex justify-content-between align-items-center mb-2">
               <h6 className="mb-0">Ask a follow-up question</h6>
