@@ -6,7 +6,7 @@ The system is intended for educational and formative preparation use only. It is
 
 ## Overview
 
-The prototype helps users study Cyber Essentials by providing:
+The prototype helps users study and reflect on Cyber Essentials by providing:
 
 * Section-based navigation through the Cyber Essentials requirements PDF.
 * An AI tutor that answers questions using retrieved Cyber Essentials content.
@@ -15,6 +15,8 @@ The prototype helps users study Cyber Essentials by providing:
 * Question-level progress tracking.
 * A personalised weak-points summary based on missing rubric points.
 * A shortened Cyber Essentials readiness consultation workflow for small organisations.
+* Help guidance for consultation questions and report clarification questions.
+* Follow-up AI help inside consultation explanation dialogs.
 * Gamified progress indicators, including mastery percentage, XP and badges.
 * A privacy and usage notice shown when the user opens the application.
 
@@ -63,6 +65,9 @@ The tutor is designed to:
 * Provide clear learner-friendly explanations.
 * Avoid making official certification or compliance decisions.
 * Show source information where relevant.
+* Keep the user within the learning and formative-support purpose of the prototype.
+
+The AI Tutor conversation panel automatically scrolls to the start of each new AI response. This improves usability during longer conversations because users do not need to manually scroll down to find the latest answer.
 
 ### Formative Assessment
 
@@ -95,13 +100,13 @@ The assessment interface supports:
 * `Next Question` — loads the next question after feedback has been shown.
 * Question numbering, such as `Question 1 of 3`.
 
-The system also uses the learner’s anonymous browser session ID to return them to the first unanswered question in a topic when they navigate away and return later.
+The system also uses the learner's anonymous browser session ID to return them to the first unanswered question in a topic when they navigate away and return later.
 
 ### Weak Points Summary
 
-The system includes a dedicated `Weak Points` tab that summarises the learner’s current weak areas across the assessment topics.
+The system includes a dedicated `Weak Points` tab that summarises the learner's current weak areas across the assessment topics.
 
-After each assessment submission, the system stores the score, strengths and missing rubric points. The Weak Points Summary uses the learner’s best attempt for each question. If a question’s best attempt is not full marks, the missing points from that best attempt are included in the summary. If the learner later retries the question and achieves full marks, that question is removed from the weak points list.
+After each assessment submission, the system stores the score, strengths and missing rubric points. The Weak Points Summary uses the learner's best attempt for each question. If a question's best attempt is not full marks, the missing points from that best attempt are included in the summary. If the learner later retries the question and achieves full marks, that question is removed from the weak points list.
 
 The Weak Points Summary displays:
 
@@ -142,12 +147,53 @@ After the user submits the consultation form, the system generates a readiness r
 * Recommended actions
 * Recommended next steps
 * Retrieved sources used
+* Clarification questions, where further information would improve the report
 
-The report may also include clarification questions. These questions are generated once from the initial consultation result. Users can answer one or more clarification questions, and the system regenerates the report using the additional information. Answered clarification questions are then removed from the list, preventing an endless question loop.
-
-The consultation feature does not save the user’s raw consultation input to the application database. The report is generated temporarily in the browser session and is intended only as formative readiness guidance.
+The consultation feature does not save the user's raw consultation input to the application database. The report is generated temporarily in the browser session and is intended only as formative readiness guidance.
 
 The consultation feature does not use Cyber Essentials Plus test specifications and does not perform technical testing, auditing, scanning or formal pass/fail assessment.
+
+### Consultation Help: Help me understand
+
+The consultation form includes `Help me understand` buttons beside the consultation questions. These buttons open an explanation dialog that helps users understand what each question is asking.
+
+Each explanation includes:
+
+* A plain-language explanation of the question.
+* Why the question matters.
+* How the user can answer it.
+* A small-business example.
+
+The explanation design avoids repeated privacy warnings inside every question to keep the interface readable. Privacy and sensitive-data guidance is still provided in the application-level prototype notice and through relevant input placeholders.
+
+Inside the help dialog, users can also ask follow-up questions. The AI follow-up assistant is limited to explaining the consultation question and helping the user understand the answer options. It should not complete the form on behalf of the user, request sensitive details, or make official compliance decisions.
+
+Help conversations are stored only in frontend state while the page remains open. They are not saved to the database or localStorage. Closing and reopening the help dialog does not clear the current question's help conversation, but refreshing the page clears it naturally.
+
+The help dialog also includes a manual `Clear conversation` option so users can remove the temporary help conversation for the current question.
+
+### Clarification Questions in the Consultation Report
+
+The consultation report may include `Questions to clarify`. These questions are dynamically selected by backend rule-based logic from a predefined set, based on the potential gaps identified in the consultation answers.
+
+They are not freely generated by the language model. This makes the follow-up process more predictable, explainable and aligned with the Cyber Essentials control areas.
+
+Users can answer one or more clarification questions and regenerate the report. Answered clarification questions are then removed from the visible list, preventing an endless question loop.
+
+Each clarification question also includes a `Help me understand` button. The clarification help content is mapped to the predefined clarification questions, so each clarification question can have its own fixed explanation, including:
+
+* What the clarification question means.
+* Why that clarification matters.
+* How the user can answer in general terms.
+* A suitable small-business example.
+
+The clarification help feature is designed to support understanding, not to provide official compliance advice.
+
+### Automatic Scrolling in AI Conversations
+
+The AI Tutor and consultation help dialogs automatically move to the start of the latest AI response after a response is generated.
+
+This improves usability in longer conversations. Instead of needing to manually scroll through the chat area, users are taken directly to the newly generated AI answer.
 
 ### Gamified Progress Tracking
 
@@ -203,6 +249,8 @@ The frontend is responsible for:
 * Displaying gamified progress data.
 * Displaying weak points derived from missing rubric points.
 * Rendering the shortened consultation form and readiness report.
+* Managing temporary consultation help conversations in frontend state.
+* Automatically scrolling AI conversation panels to new AI responses.
 
 ### Backend
 
@@ -210,7 +258,7 @@ The frontend is responsible for:
 * FastAPI
 * Pydantic
 * Supabase Python client
-* Azure OpenAI SDK
+* Azure OpenAI / OpenAI-compatible client configuration
 
 The backend provides API routes for:
 
@@ -221,6 +269,7 @@ The backend provides API routes for:
 * Progress tracking and gamification
 * Weak points summary generation
 * Consultation readiness analysis
+* Consultation field explanation support
 
 ### Database and Storage
 
@@ -236,18 +285,20 @@ Important tables include:
 * `rubrics`
 * `assessment_attempts`
 * `progress_sessions`
-* document chunk tables used for retrieval
+* Document chunk tables used for retrieval
 
 The current progress and weak-points systems use `assessment_attempts` as the main source of truth. The older `progress_sessions` table may still exist but is not the main basis for mastery calculation.
 
-The consultation feature does not require a new database table in the current implementation because raw consultation input is not stored.
+The consultation feature does not require a new database table in the current implementation because raw consultation input and raw consultation help conversations are not stored.
 
 ### AI Services
 
-* Azure OpenAI chat deployment for AI tutor responses, assessment feedback and consultation summaries.
+* Azure OpenAI chat deployment for AI tutor responses, assessment feedback, consultation summaries and consultation help responses.
 * Azure OpenAI embedding deployment for retrieval queries.
 
 The system uses retrieval-augmented generation. User questions, assessment answers and consultation context are combined with relevant Cyber Essentials document chunks before being sent to the AI model.
+
+The consultation `Help me understand` feature uses AI for follow-up explanations inside the help dialog. Static explanations are predefined in the frontend, while AI follow-up responses are generated by the backend.
 
 ### Deployment
 
@@ -275,11 +326,12 @@ FastAPI Backend
    |     |-- rubrics
    |     |-- assessment attempts
    |
-   |-- Azure OpenAI
+   |-- Azure OpenAI / OpenAI-compatible endpoint
          |-- embeddings
          |-- AI tutor responses
          |-- formative assessment feedback
          |-- consultation readiness summaries
+         |-- consultation help responses
 ```
 
 ## Main Backend Modules
@@ -339,6 +391,7 @@ Key responsibilities:
 * Use Azure OpenAI to generate a concise readiness summary.
 * Return clarification questions for the initial report.
 * Support report regeneration when users provide clarification details.
+* Provide AI follow-up explanations for consultation fields through the help dialog.
 
 The consultation module is designed to provide formative readiness guidance only. It does not make certification decisions and does not perform technical auditing.
 
@@ -350,6 +403,9 @@ Handles:
 * Grounded AI tutor responses.
 * Structured formative assessment feedback.
 * Consultation readiness summaries.
+* Consultation help responses.
+
+The chat configuration supports an Azure OpenAI base URL style configuration through `AZURE_OPENAI_BASE_URL`. Depending on deployment configuration, endpoint-style Azure OpenAI variables may also be used.
 
 ### Supabase Client
 
@@ -432,10 +488,25 @@ AZURE_OPENAI_DEPLOYMENT=
 AZURE_OPENAI_DEPLOYMENT_NAME=
 ```
 
+Example backend configuration using an OpenAI-compatible Azure base URL:
+
+```env
+AZURE_OPENAI_BASE_URL=https://your-resource-name.openai.azure.com/openai/v1
+AZURE_OPENAI_API_KEY=your-api-key
+AZURE_OPENAI_CHAT_DEPLOYMENT=your-chat-deployment-name
+AZURE_OPENAI_EMBEDDING_DEPLOYMENT=your-embedding-deployment-name
+```
+
 The frontend requires:
 
 ```env
 VITE_API_BASE_URL=
+```
+
+Example local frontend configuration:
+
+```env
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
 Sensitive keys should not be committed to GitHub.
@@ -447,13 +518,27 @@ Sensitive keys should not be committed to GitHub.
 From the project root:
 
 ```bash
-python -m uvicorn main:app --reload --app-dir backend
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 The backend will usually run at:
 
 ```text
-http://localhost:8000
+http://127.0.0.1:8000
+```
+
+Health check:
+
+```text
+http://127.0.0.1:8000/api/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
 ```
 
 ### Frontend
@@ -480,6 +565,12 @@ npm run build
 ```
 
 ## Example API Routes
+
+### Health Check
+
+```text
+GET /api/health
+```
 
 ### AI Tutor
 
@@ -525,8 +616,149 @@ POST /api/progress/update
 GET /api/progress/weaknesses/{session_id}
 ```
 
-### Generate Consultation Summary
+### Generate Consultation Report
 
 ```text
 POST /api/consultation/analyse
 ```
+
+### Explain Consultation Field
+
+```text
+POST /api/consultation/explain-field
+```
+
+This endpoint supports the `Help me understand` follow-up feature in the consultation interface. It receives the consultation field context, the user's follow-up question and recent temporary help messages, then returns a concise explanatory response.
+
+## Privacy and Data Handling
+
+The prototype is designed to minimise unnecessary data storage.
+
+### Stored
+
+The system stores limited progress-related metadata, including:
+
+* Anonymous browser session ID
+* Topic ID
+* Question ID
+* Score
+* Maximum score
+* Strengths
+* Missing points
+* Timestamp
+
+This data supports progress restoration, mastery calculation, XP, badges and weak-points review.
+
+### Not Stored in the Application Database
+
+The current implementation does not store:
+
+* Raw AI Tutor chat transcripts
+* Raw assessment answer text
+* Raw consultation form input
+* Raw consultation help conversations
+* Raw clarification question help conversations
+
+Consultation help conversations are held temporarily in frontend state while the page remains open. They are cleared naturally when the page is refreshed.
+
+### Sensitive Information Warning
+
+Users are instructed not to enter:
+
+* Real company names
+* Employee names
+* IP addresses
+* Usernames
+* Passwords
+* Credentials
+* Internal hostnames
+* Detailed firewall rules
+* Confidential configurations
+* Customer data
+* Screenshots containing sensitive information
+
+The system is intended for learning and formative reflection, not for processing real confidential organisational data.
+
+## Important Limitations
+
+This prototype:
+
+* Is not an official Cyber Essentials certification platform.
+* Does not replace a Certification Body.
+* Does not make official compliance decisions.
+* Does not provide professional legal, security or compliance advice.
+* Does not perform technical scanning or auditing.
+* Does not implement Cyber Essentials Plus testing.
+* Does not guarantee that an organisation will pass or fail certification.
+* Uses a shortened consultation workflow rather than the full official self-assessment questionnaire.
+* Uses AI-generated explanations that should be interpreted as learning support only.
+
+## Research and Evaluation Context
+
+This project is designed as a dissertation prototype for exploring how an intelligent tutoring system can support Cyber Essentials learning and readiness preparation.
+
+The system combines:
+
+* Educational content navigation.
+* Retrieval-augmented AI explanations.
+* Formative assessment.
+* Progress tracking and gamification.
+* Weak-points review.
+* SME-oriented readiness consultation.
+* Explainable help for consultation questions and clarification questions.
+
+The evaluation focus is on usability, learning support, perceived usefulness, transparency and whether the prototype helps users better understand Cyber Essentials control areas.
+
+## Repository Structure
+
+A simplified repository structure is shown below:
+
+```text
+.
+|-- backend/
+|   |-- main.py
+|   |-- requirements.txt
+|   |-- app/
+|       |-- api/
+|       |   |-- chat.py
+|       |   |-- assessment.py
+|       |   |-- progress.py
+|       |   |-- consultation.py
+|       |-- core/
+|           |-- azure_openai.py
+|           |-- supabase_client.py
+|
+|-- frontend/
+|   |-- package.json
+|   |-- src/
+|       |-- App.tsx
+|       |-- components/
+|           |-- ConsultationTab.tsx
+|
+|-- README.md
+```
+
+## Current Status
+
+The current prototype includes:
+
+* PDF-based Cyber Essentials learning.
+* RAG-based AI Tutor.
+* Open-ended formative assessment.
+* AI-generated assessment feedback.
+* Question-level progress tracking.
+* XP, mastery percentage and badge indicators.
+* Weak-points summary based on best attempts.
+* Shortened SME readiness consultation.
+* Rule-based consultation gap detection.
+* AI-generated consultation summaries.
+* Predefined clarification questions selected dynamically from identified gaps.
+* Help explanations for consultation questions.
+* Help explanations for report clarification questions.
+* AI follow-up support inside consultation help dialogs.
+* Automatic scrolling to new AI responses.
+* Privacy and prototype limitation notices.
+
+## Licence and Use
+
+This prototype is developed for academic and educational purposes. It should not be used as an official Cyber Essentials certification tool or as a substitute for professional security consultancy.

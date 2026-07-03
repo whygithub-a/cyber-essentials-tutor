@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Badge,
@@ -251,6 +251,9 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingAnswer, setLoadingAnswer] = useState(false);
   const [chatError, setChatError] = useState("");
+
+  const tutorMessagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const latestTutorAssistantMessageRef = useRef<HTMLDivElement | null>(null);
 
   const [assessmentQuestion, setAssessmentQuestion] =
     useState<AssessmentQuestion | null>(null);
@@ -606,6 +609,19 @@ function App() {
   };
 
   useEffect(() => {
+    const latestMessage = messages[messages.length - 1];
+
+    if (!latestMessage || latestMessage.role !== "assistant") return;
+
+    window.requestAnimationFrame(() => {
+      latestTutorAssistantMessageRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [messages]);
+
+  useEffect(() => {
     if (showIntroModal) return;
 
     const activeSessionId = getOrCreateSessionId();
@@ -949,6 +965,7 @@ function App() {
                     </div>
 
                     <div
+                      ref={tutorMessagesContainerRef}
                       style={{
                         minHeight: 0,
                         overflowY: "auto",
@@ -969,11 +986,21 @@ function App() {
                         </Alert>
                       )}
 
-                      {messages.map((message, index) => (
-                        <Card
-                          key={`${message.role}-${index}`}
-                          className="mb-3 border-0 shadow-sm"
-                        >
+                      {messages.map((message, index) => {
+                        const isLatestAssistantMessage =
+                          message.role === "assistant" &&
+                          index === messages.length - 1;
+
+                        return (
+                          <Card
+                            key={`${message.role}-${index}`}
+                            ref={
+                              isLatestAssistantMessage
+                                ? latestTutorAssistantMessageRef
+                                : undefined
+                            }
+                            className="mb-3 border-0 shadow-sm"
+                          >
                           <Card.Body className="p-3">
                             <Badge
                               bg={
@@ -1032,8 +1059,9 @@ function App() {
                               </details>
                             )}
                           </Card.Body>
-                        </Card>
-                      ))}
+                          </Card>
+                        );
+                      })}
 
                       {loadingAnswer && (
                         <Alert variant="info" className="mb-0 small">

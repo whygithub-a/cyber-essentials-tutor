@@ -3,7 +3,7 @@ import os
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
-from openai import AzureOpenAI
+from openai import AzureOpenAI, OpenAI
 from pydantic import BaseModel, Field
 
 from app.core.azure_openai import create_embedding
@@ -45,6 +45,25 @@ class ConsultationRequest(BaseModel):
     malware_updated_blocking: str
 
     additional_context: str = ""
+
+
+class ConsultationHelpMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ConsultationFieldHelpRequest(BaseModel):
+    field_id: str
+    field_title: str
+    field_question: str
+    static_explanation: str
+    current_answer: str = ""
+    user_follow_up: str
+    recent_messages: list[ConsultationHelpMessage] = Field(default_factory=list)
+
+
+class ConsultationFieldHelpResponse(BaseModel):
+    answer: str
 
 
 class ConsultationGap(BaseModel):
@@ -334,7 +353,11 @@ def build_dynamic_clarification_questions(
                 )
 
         if "cloud services" in issue:
-            if "microsoft 365" not in context and "google workspace" not in context and "cloud" not in context:
+            if (
+                "microsoft 365" not in context
+                and "google workspace" not in context
+                and "cloud" not in context
+            ):
                 add_question(
                     "Which cloud services store or process business data, such as email, file storage, accounting, CRM, payroll or business social media accounts?"
                 )
@@ -356,7 +379,11 @@ def build_dynamic_clarification_questions(
                     "Who checks for unused applications, unnecessary services and inactive user accounts, and how often is this reviewed?"
                 )
 
-            if "screen lock" not in context and "device lock" not in context and "pin" not in context:
+            if (
+                "screen lock" not in context
+                and "device lock" not in context
+                and "pin" not in context
+            ):
                 add_question(
                     "Which device types use screen lock, password, PIN or biometric protection?"
                 )
@@ -410,7 +437,10 @@ def evaluate_consultation_answers(
     context = normalise(request.additional_context)
 
     if list_contains_any(request.devices, ["personal", "byod", "not sure"]):
-        if "personal devices are managed" in context or "byod devices are managed" in context:
+        if (
+            "personal devices are managed" in context
+            or "byod devices are managed" in context
+        ):
             add_strength(
                 strengths=strengths,
                 control="Scope",
@@ -436,7 +466,11 @@ def evaluate_consultation_answers(
             )
 
     if list_contains_any(request.cloud_services, ["not sure"]):
-        if "cloud services are listed" in context or "we use microsoft 365" in context or "we use google workspace" in context:
+        if (
+            "cloud services are listed" in context
+            or "we use microsoft 365" in context
+            or "we use google workspace" in context
+        ):
             add_strength(
                 strengths=strengths,
                 control="Scope",
@@ -908,22 +942,18 @@ def build_sources(retrieved_chunks: list[dict]) -> list[ConsultationSource]:
 
 
 def get_azure_client() -> AzureOpenAI:
-    endpoint = (
-        os.getenv("AZURE_OPENAI_BASE_URL")
-        or os.getenv("AZURE_OPENAI_ENDPOINT")
-    )
-
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     api_key = os.getenv("AZURE_OPENAI_API_KEY")
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
 
     if not endpoint:
-        raise RuntimeError("AZURE_OPENAI_BASE_URL or AZURE_OPENAI_ENDPOINT is not set")
+        raise RuntimeError("AZURE_OPENAI_ENDPOINT is not set")
 
     if not api_key:
         raise RuntimeError("AZURE_OPENAI_API_KEY is not set")
 
     return AzureOpenAI(
-        azure_endpoint=endpoint,
+        azure_endpoint=endpoint.rstrip("/"),
         api_key=api_key,
         api_version=api_version,
     )
@@ -943,6 +973,45 @@ def get_chat_deployment() -> str:
         )
 
     return deployment
+
+
+def get_chat_client():
+    base_url = os.getenv("AZURE_OPENAI_BASE_URL")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+
+    if not api_key:
+        raise RuntimeError("AZURE_OPENAI_API_KEY is not set")
+
+    if base_url:
+        return OpenAI(
+            base_url=base_url.rstrip("/") + "/",
+            api_key=api_key,
+        )
+
+    return get_azure_client()
+
+
+def create_chat_completion_text(
+    messages: list[dict],
+    temperature: float,
+    max_tokens: int,
+) -> str:
+    client = get_chat_client()
+    deployment = get_chat_deployment()
+
+    response = client.chat.completions.create(
+        model=deployment,
+        messages=messages,
+        temperature=temperature,
+        max_completion_tokens=max_tokens,
+    )
+
+    content = response.choices[0].message.content
+
+    if not content:
+        return ""
+
+    return content.strip()
 
 
 def generate_ai_summary(
@@ -968,9 +1037,6 @@ def generate_ai_summary(
             for index, chunk in enumerate(retrieved_chunks[:4])
         ]
     )
-
-    client = get_azure_client()
-    deployment = get_chat_deployment()
 
     system_prompt = """
 You are a Cyber Essentials readiness consultation assistant for a learning prototype.
@@ -1005,8 +1071,7 @@ Do not ask for sensitive information such as real company names, IP addresses, p
         ),
     }
 
-    response = client.chat.completions.create(
-        model=deployment,
+    content = create_chat_completion_text(
         messages=[
             {"role": "system", "content": system_prompt},
             {
@@ -1018,12 +1083,10 @@ Do not ask for sensitive information such as real company names, IP addresses, p
         max_tokens=260,
     )
 
-    content = response.choices[0].message.content
-
     if not content:
         return build_fallback_summary(overall_readiness, gaps)
 
-    return content.strip()
+    return content
 
 
 def build_fallback_summary(
@@ -1069,6 +1132,112 @@ def build_recommended_next_steps(gaps: list[ConsultationGap]) -> list[str]:
             break
 
     return next_steps
+
+
+@router.post("/explain-field", response_model=ConsultationFieldHelpResponse)
+def explain_consultation_field(request: ConsultationFieldHelpRequest):
+    follow_up = request.user_follow_up.strip()
+
+    if not follow_up:
+        raise HTTPException(status_code=400, detail="Follow-up question is required.")
+
+    try:
+        safe_history = []
+        for message in request.recent_messages[-8:]:
+            role = "assistant" if message.role == "assistant" else "user"
+            content = message.content.strip()
+
+            if content:
+                safe_history.append(
+                    {
+                        "role": role,
+                        "content": content[:900],
+                    }
+                )
+
+        system_prompt = """
+You are an AI help assistant inside a Cyber Essentials learning prototype.
+
+Your job is to help a small business user understand a consultation question.
+
+You must:
+- explain the meaning of the field in plain, non-technical language
+- help the user understand what information they may need to check
+- explain answer options in general terms where useful
+- keep the answer short and practical
+- avoid making official Cyber Essentials certification, audit or compliance decisions
+- avoid saying the organisation will pass or fail Cyber Essentials
+- avoid completing the form on behalf of the user
+- avoid requesting sensitive information
+
+You must not ask for or encourage the user to provide:
+- real company names
+- employee names
+- IP addresses
+- usernames
+- passwords
+- credentials
+- internal hostnames
+- detailed firewall rules
+- confidential configurations
+- customer data
+- screenshots containing sensitive information
+
+If the user gives a concrete example, you may explain how to think about it in general terms, but remind them to choose the option that best matches their actual situation.
+""".strip()
+
+        context_payload = {
+            "field_id": request.field_id,
+            "field_title": request.field_title,
+            "field_question": request.field_question,
+            "static_explanation": request.static_explanation,
+            "current_answer": request.current_answer,
+            "task": (
+                "Answer the user's follow-up question about this consultation field. "
+                "Do not provide an official compliance decision. "
+                "Do not ask for sensitive details."
+            ),
+        }
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": json.dumps(context_payload, ensure_ascii=False),
+            },
+        ]
+
+        messages.extend(safe_history)
+        messages.append({"role": "user", "content": follow_up})
+
+        content = create_chat_completion_text(
+            messages=messages,
+            temperature=0.2,
+            max_tokens=320,
+        )
+
+        if not content:
+            return ConsultationFieldHelpResponse(
+                answer=(
+                    "I could not generate a detailed explanation for this question. "
+                    "In general, answer using non-sensitive information and choose "
+                    "'Not sure' if you cannot confirm the relevant setting."
+                )
+            )
+
+        return ConsultationFieldHelpResponse(answer=content)
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        import traceback
+
+        traceback.print_exc()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"{type(exc).__name__}: {str(exc)}",
+        )
 
 
 @router.post("/analyse", response_model=ConsultationResponse)
