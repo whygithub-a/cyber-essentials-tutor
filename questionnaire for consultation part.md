@@ -27,7 +27,7 @@ Before completing the questionnaire, please:
 
 ---
 
-## Section 1: Participant background
+
 
 ### Q1. Do you agree to take part in this evaluation?
 
@@ -47,7 +47,6 @@ Participants who select “No” should be directed to the end of the form.
 * 5–10 minutes
 * 11–15 minutes
 * More than 15 minutes
-* I was unable to complete it
 
 ### Q3. Please indicate how much you agree with the following statements.
 
