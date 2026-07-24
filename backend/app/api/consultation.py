@@ -6,7 +6,10 @@ from fastapi import APIRouter, HTTPException
 from openai import AzureOpenAI, OpenAI
 from pydantic import BaseModel, Field
 
-from app.core.azure_openai import create_embedding
+from app.core.azure_openai import (
+    PLAIN_TEXT_RESPONSE_RULES,
+    create_embedding,
+)
 from app.core.supabase_client import supabase
 
 router = APIRouter(prefix="/api/consultation", tags=["consultation"])
@@ -57,7 +60,6 @@ class ConsultationFieldHelpRequest(BaseModel):
     field_title: str
     field_question: str
     static_explanation: str
-    current_answer: str = ""
     user_follow_up: str
     recent_messages: list[ConsultationHelpMessage] = Field(default_factory=list)
 
@@ -1038,7 +1040,7 @@ def generate_ai_summary(
         ]
     )
 
-    system_prompt = """
+    system_prompt = f"""
 You are a Cyber Essentials readiness consultation assistant for a learning prototype.
 
 You must:
@@ -1047,10 +1049,13 @@ You must:
 - avoid saying the organisation will pass or fail Cyber Essentials
 - base the explanation on the provided structured analysis and retrieved Cyber Essentials context
 - keep the summary concise and practical
+- write the summary as one plain-text paragraph
 - reflect any additional clarification provided by the user
 - do not include a repeated standard disclaimer paragraph in the summary because the interface already shows warnings elsewhere
 
 Do not ask for sensitive information such as real company names, IP addresses, passwords, usernames, internal hostnames, credentials or confidential configurations.
+
+{PLAIN_TEXT_RESPONSE_RULES}
 """.strip()
 
     user_prompt = {
@@ -1155,7 +1160,7 @@ def explain_consultation_field(request: ConsultationFieldHelpRequest):
                     }
                 )
 
-        system_prompt = """
+        system_prompt = f"""
 You are an AI help assistant inside a Cyber Essentials learning prototype.
 
 Your job is to help a small business user understand a consultation question.
@@ -1184,6 +1189,8 @@ You must not ask for or encourage the user to provide:
 - screenshots containing sensitive information
 
 If the user gives a concrete example, you may explain how to think about it in general terms, but remind them to choose the option that best matches their actual situation.
+
+{PLAIN_TEXT_RESPONSE_RULES}
 """.strip()
 
         context_payload = {
@@ -1191,7 +1198,6 @@ If the user gives a concrete example, you may explain how to think about it in g
             "field_title": request.field_title,
             "field_question": request.field_question,
             "static_explanation": request.static_explanation,
-            "current_answer": request.current_answer,
             "task": (
                 "Answer the user's follow-up question about this consultation field. "
                 "Do not provide an official compliance decision. "

@@ -11,6 +11,17 @@ client = OpenAI(
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
 )
 
+PLAIN_TEXT_RESPONSE_RULES = """
+Output-format requirements:
+
+- Write the response in plain text.
+- Do not use Markdown bold or italic formatting.
+- Do not place asterisks around words or phrases for emphasis.
+- Do not begin list items with an asterisk.
+- When several points are needed, use short paragraphs or numbered items such as 1., 2. and 3.
+- Use an asterisk only when it is technically meaningful, such as a wildcard, file pattern, mathematical expression, or literal text supplied by the user or source material.
+""".strip()
+
 def create_embedding(text: str) -> list[float]:
     response = client.embeddings.create(
         model= os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
@@ -25,7 +36,11 @@ def generate_test_response(user_message: str) -> str:
         input=[
             {
                 "role": "system",
-                "content": "You are a helpful educational assistant for a Cyber Essentials tutoring prototype.",
+                "content": (
+                    "You are a helpful educational assistant for a "
+                    "Cyber Essentials tutoring prototype.\n\n"
+                    f"{PLAIN_TEXT_RESPONSE_RULES}"
+                ),
             },
             {
                 "role": "user",
@@ -64,7 +79,7 @@ def generate_grounded_response(
 
     combined_context = "\n\n---\n\n".join(context_blocks)
 
-    system_message = """
+    system_message = f"""
 You are an educational AI tutor for a Cyber Essentials learning prototype.
 
 You must answer using the provided Cyber Essentials context where possible.
@@ -74,6 +89,8 @@ Do not present yourself as an official Cyber Essentials certification assessor.
 Do not make certification decisions.
 If the provided context is insufficient, say that the available context is limited.
 Give clear, practical, learner-friendly explanations.
+
+{PLAIN_TEXT_RESPONSE_RULES}
 """.strip()
 
     user_prompt = f"""
@@ -117,14 +134,21 @@ def generate_assessment_feedback(
         ]
     )
 
-    system_message = """
+    system_message = f"""
 You are an educational assessor for a Cyber Essentials learning prototype.
 
 You provide formative feedback only.
 You must not present the result as an official Cyber Essentials certification decision.
 Use the rubric and retrieved Cyber Essentials context to assess the learner's answer.
 Be fair, specific and constructive.
+
 Return only valid JSON.
+Do not place the JSON inside a Markdown code block.
+Each item in strengths and missing_points must be one clear plain-text sentence.
+The feedback value must use plain text.
+All text values inside the JSON must follow the output-format requirements below.
+
+{PLAIN_TEXT_RESPONSE_RULES}
 """.strip()
 
     user_prompt = f"""

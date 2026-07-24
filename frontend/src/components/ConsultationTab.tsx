@@ -973,7 +973,6 @@ function ConsultationTab({ apiBaseUrl, sessionId }: ConsultationTabProps) {
             ]
               .filter(Boolean)
               .join("\n"),
-            current_answer: "",
             user_follow_up: userQuestion,
             recent_messages: previousMessages.slice(-8),
           }),
