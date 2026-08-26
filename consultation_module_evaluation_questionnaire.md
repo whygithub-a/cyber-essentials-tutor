@@ -13,11 +13,17 @@ The questionnaire was anonymous.
 Before completing the questionnaire, please:
 
 1.Complete the consultation questionnaire using a fictional organisation or general information.
+
 2.Use Help me understand for at least one consultation question.
+
 3.Submit the consultation and review the generated readiness report.
+
 4.Review the Questions to clarify section.
+
 5.Use Help me understand for at least one clarification question.
+
 6.Answer at least one clarification question and regenerate the report.
+
 
 ---
 
