@@ -10,17 +10,14 @@ The questionnaire was anonymous.
 
 ## Participant Task
 
-Before completing this questionnaire, participants were asked to:
+Before completing the questionnaire, please:
 
-1. Open the Consultation module.
-2. Complete the shortened Consultation questionnaire using a fictional organisation or generalised information.
-3. Use the "Help me understand" function for at least one question.
-4. Ask an AI follow-up question where appropriate.
-5. Submit the questionnaire and review the generated readiness report.
-6. Review the clarification questions shown in the report.
-7. Use "Help me understand" for at least one clarification question.
-8. Answer at least one clarification question.
-9. Regenerate and review the updated report.
+1.Complete the consultation questionnaire using a fictional organisation or general information.
+2.Use Help me understand for at least one consultation question.
+3.Submit the consultation and review the generated readiness report.
+4.Review the Questions to clarify section.
+5.Use Help me understand for at least one clarification question.
+6.Answer at least one clarification question and regenerate the report.
 
 ---
 
