@@ -88,11 +88,9 @@ Main application tables include:
 
 The application does not persist raw AI Tutor conversations, raw assessment answers or raw Consultation responses.
 
-A database schema diagram can be included here:
+### Database Schema
 
-```markdown
 ![Database schema](docs/database-schema.png)
-```
 
 ## Project Structure
 
